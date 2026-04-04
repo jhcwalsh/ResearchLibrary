@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import streamlit as st
 import anthropic
 from dotenv import load_dotenv
@@ -10,6 +13,14 @@ from src.research_library.zotero_client import (
     get_fulltext, get_fulltext_batch, extract_pdf_text, PYMUPDF_AVAILABLE,
 )
 from src.research_library.analysis import build_index, load_cached_index
+
+SUBS_PATH = Path(__file__).parent / "subcategory_suggestions.json"
+
+
+def load_subcategories() -> dict:
+    if SUBS_PATH.exists():
+        return json.loads(SUBS_PATH.read_text(encoding="utf-8"))
+    return {}
 
 st.set_page_config(page_title="Research Library", page_icon="📚", layout="wide")
 st.title("📚 Research Library")
@@ -224,6 +235,19 @@ elif mode == "Recent Papers":
     for p in papers:
         paper_expander(p)
 
+def _render_paper_list(papers):
+    """Render a compact list of papers (title, authors, year, DOI)."""
+    for p in papers:
+        authors = ", ".join(p["authors"][:3])
+        if len(p["authors"]) > 3:
+            authors += " et al."
+        year = f" ({p['year']})" if p["year"] else ""
+        doi_link = f" · [DOI](https://doi.org/{p['doi']})" if p.get("doi") else ""
+        st.markdown(f"**{p['title']}**{year}  \n{authors}{doi_link}")
+        if p.get("abstract"):
+            st.caption(p["abstract"][:200] + ("..." if len(p["abstract"]) > 200 else ""))
+
+
 # ── Library Index ─────────────────────────────────────────────────────────────
 elif mode == "Library Index":
     cached = load_cached_index()
@@ -257,8 +281,14 @@ elif mode == "Library Index":
         st.rerun()
 
     if cached:
-        # Optional search within index
-        filter_text = st.text_input("Filter categories or papers", placeholder="e.g. regime, neural network...")
+        subcategories = load_subcategories()
+
+        col_filter, col_view = st.columns([3, 1])
+        with col_filter:
+            filter_text = st.text_input("Filter categories or papers", placeholder="e.g. regime, neural network...")
+        with col_view:
+            show_subs = st.checkbox("Show subcategories", value=True,
+                                    help="Group large categories into subcategories where available")
 
         categories = cached["categories"]
         sorted_cats = sorted(categories.items(), key=lambda x: len(x[1]["papers"]), reverse=True)
@@ -278,15 +308,24 @@ elif mode == "Library Index":
                 if not name_match:
                     papers = matching
 
-            with st.expander(f"**{cat_name}** — {len(papers)} papers"):
+            cat_subs = subcategories.get(cat_name) if show_subs else None
+            sub_label = f" · {len(cat_subs)} subcategories" if cat_subs else ""
+            with st.expander(f"**{cat_name}** — {len(papers)} papers{sub_label}"):
                 st.markdown(f"*{cat_data['summary']}*")
                 st.divider()
-                for p in papers:
-                    authors = ", ".join(p["authors"][:3])
-                    if len(p["authors"]) > 3:
-                        authors += " et al."
-                    year = f" ({p['year']})" if p["year"] else ""
-                    doi_link = f" · [DOI](https://doi.org/{p['doi']})" if p.get("doi") else ""
-                    st.markdown(f"**{p['title']}**{year}  \n{authors}{doi_link}")
-                    if p.get("abstract"):
-                        st.caption(p["abstract"][:200] + ("..." if len(p["abstract"]) > 200 else ""))
+
+                if cat_subs:
+                    # Build a set of keys present after filtering
+                    visible_keys = {p["key"] for p in papers}
+                    paper_by_key = {p["key"]: p for p in papers}
+
+                    for sub_name, sub_keys in sorted(cat_subs.items(), key=lambda x: -len(x[1])):
+                        sub_papers = [paper_by_key[k] for k in sub_keys if k in visible_keys]
+                        if not sub_papers:
+                            continue
+                        st.markdown(f"#### {sub_name} &nbsp; <small>({len(sub_papers)})</small>",
+                                    unsafe_allow_html=True)
+                        _render_paper_list(sub_papers)
+                        st.divider()
+                else:
+                    _render_paper_list(papers)

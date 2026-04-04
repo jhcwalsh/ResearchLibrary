@@ -18,6 +18,7 @@ research-library = "research_library.server:main"
 
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.27.0"]
+download = ["requests>=2.32.0", "beautifulsoup4>=4.12.0"]
 dev = ["pytest>=8.0", "pytest-asyncio>=1.0"]
 
 [tool.hatch.build.targets.wheel]
