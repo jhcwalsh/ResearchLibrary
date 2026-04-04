@@ -82,6 +82,31 @@ TOOLS: list[types.Tool] = [
             "required": ["tag"],
         },
     ),
+    types.Tool(
+        name="get_fulltext",
+        description="Get the full text of a paper from Zotero's indexed content. Returns the complete text if Zotero has indexed the PDF attachment.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Zotero item key of the parent paper"},
+                "char_limit": {"type": "integer", "default": 40000, "description": "Max characters to return"},
+            },
+            "required": ["key"],
+        },
+    ),
+    types.Tool(
+        name="get_fulltext_batch",
+        description="Get full text for multiple papers at once. Useful for answering questions across a set of papers.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "keys": {"type": "array", "items": {"type": "string"}, "description": "List of Zotero item keys"},
+                "max_papers": {"type": "integer", "default": 5, "description": "Max papers to fetch full text for"},
+                "char_limit": {"type": "integer", "default": 3000, "description": "Max characters per paper"},
+            },
+            "required": ["keys"],
+        },
+    ),
 ]
 
 
@@ -133,5 +158,24 @@ async def handle_tool(name: str, arguments: dict) -> list[types.TextContent]:
         if not papers:
             return _text(f"No papers found with tag '{arguments['tag']}'.")
         return _text(json.dumps(papers, indent=2))
+
+    if name == "get_fulltext":
+        ft = zc.get_fulltext(arguments["key"], arguments.get("char_limit", 40000))
+        if not ft["content"]:
+            return _text(f"Full text not available: {ft['error']}")
+        note = f" [truncated from {ft['total_chars']:,} chars]" if ft["truncated"] else ""
+        return _text(f"{ft['content']}{note}")
+
+    if name == "get_fulltext_batch":
+        fake_papers = [{"key": k} for k in arguments["keys"]]
+        papers = zc.get_fulltext_batch(fake_papers, arguments.get("max_papers", 5), arguments.get("char_limit", 3000))
+        out = []
+        for p in papers:
+            ft = p.get("fulltext", {})
+            if ft.get("content"):
+                out.append({"key": p["key"], "content": ft["content"], "truncated": ft["truncated"]})
+            else:
+                out.append({"key": p["key"], "error": ft.get("error", "unknown")})
+        return _text(json.dumps(out, indent=2))
 
     return _text(f"Unknown tool: {name}")

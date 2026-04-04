@@ -16,5 +16,14 @@ dependencies = [
 [project.scripts]
 research-library = "research_library.server:main"
 
+[project.optional-dependencies]
+pdf = ["pymupdf>=1.27.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=1.0"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/research_library"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]

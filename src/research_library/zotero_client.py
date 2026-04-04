@@ -1,8 +1,15 @@
 import os
+import re
 from dotenv import load_dotenv
 from pyzotero import zotero
 
-load_dotenv()
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
+load_dotenv(override=True)
 
 _client: zotero.Zotero | None = None
 
@@ -28,9 +35,9 @@ def _format_item(item: dict) -> dict:
     ]
     return {
         "key": data.get("key", ""),
-        "title": data.get("title", "(no title)"),
+        "title": data.get("title") or "(no title)",
         "authors": authors,
-        "year": data.get("date", "")[:4] if data.get("date") else "",
+        "year": (re.search(r"\b(19|20)\d{2}\b", data.get("date", "") or "") or [""])[0] if data.get("date") else "",
         "item_type": data.get("itemType", ""),
         "abstract": data.get("abstractNote", ""),
         "publication": data.get("publicationTitle", "") or data.get("bookTitle", ""),
@@ -112,10 +119,88 @@ def get_annotations(item_key: str) -> list[dict]:
     return notes
 
 
+def get_attachment_key(item_key: str) -> str | None:
+    zot = get_client()
+    children = zot.children(item_key)
+    attachment = next(
+        (c for c in children if c["data"].get("contentType") == "application/pdf"),
+        None,
+    )
+    return attachment["data"]["key"] if attachment else None
+
+
+def get_fulltext(item_key: str, char_limit: int = 40000) -> dict:
+    try:
+        att_key = get_attachment_key(item_key)
+        if not att_key:
+            return {"content": None, "source": "none", "truncated": False, "error": "no_attachment"}
+        zot = get_client()
+        ft = zot.fulltext_item(att_key)
+        content = ft.get("content", "")
+        if not content or len(content) < 50:
+            return {"content": None, "source": "none", "truncated": False, "error": "not_indexed"}
+        truncated = len(content) > char_limit
+        return {
+            "content": content[:char_limit],
+            "source": "zotero_index",
+            "truncated": truncated,
+            "total_chars": len(content),
+            "indexed_pages": ft.get("indexedPages"),
+            "total_pages": ft.get("totalPages"),
+            "error": None,
+        }
+    except Exception as e:
+        return {"content": None, "source": "none", "truncated": False, "error": f"api_error: {e}"}
+
+
+def get_fulltext_batch(papers: list[dict], max_papers: int = 5, char_limit: int = 3000) -> list[dict]:
+    result = []
+    for p in papers[:max_papers]:
+        try:
+            ft = get_fulltext(p["key"], char_limit=char_limit)
+        except Exception as e:
+            ft = {"content": None, "source": "none", "truncated": False, "error": str(e)}
+        result.append({**p, "fulltext": ft})
+    # Papers beyond max_papers get no fulltext key
+    result.extend(papers[max_papers:])
+    return result
+
+
+def extract_pdf_text(item_key: str, char_limit: int = 40000) -> dict:
+    if not PYMUPDF_AVAILABLE:
+        return {"content": None, "source": "none", "truncated": False, "error": "pymupdf_not_installed"}
+    try:
+        att_key = get_attachment_key(item_key)
+        if not att_key:
+            return {"content": None, "source": "none", "truncated": False, "error": "no_attachment"}
+        zot = get_client()
+        pdf_bytes = zot.file(att_key)
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text = "\n".join(page.get_text() for page in doc)
+        doc.close()
+        truncated = len(text) > char_limit
+        return {
+            "content": text[:char_limit],
+            "source": "pdf_extract",
+            "truncated": truncated,
+            "total_chars": len(text),
+            "error": None,
+        }
+    except Exception as e:
+        return {"content": None, "source": "none", "truncated": False, "error": f"extract_error: {e}"}
+
+
 def get_tags(limit: int = 200) -> list[str]:
     zot = get_client()
     tags = zot.tags(limit=limit)
     return sorted(tags)
+
+
+def get_all_papers() -> list[dict]:
+    """Fetch every non-attachment item in the library, handling pagination."""
+    zot = get_client()
+    all_items = zot.everything(zot.items(itemType="-attachment || note"))
+    return [_format_item(i) for i in all_items]
 
 
 def get_papers_by_tag(tag: str, limit: int = 50) -> list[dict]:
