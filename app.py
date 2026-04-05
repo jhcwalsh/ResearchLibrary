@@ -143,6 +143,19 @@ def paper_expander(p):
                 st.write("No annotations.")
 
 
+def _render_paper_list(papers):
+    """Render a compact list of papers (title, authors, year, DOI)."""
+    for p in papers:
+        authors = ", ".join(p["authors"][:3])
+        if len(p["authors"]) > 3:
+            authors += " et al."
+        year = f" ({p['year']})" if p["year"] else ""
+        doi_link = f" · [DOI](https://doi.org/{p['doi']})" if p.get("doi") else ""
+        st.markdown(f"**{p['title']}**{year}  \n{authors}{doi_link}")
+        if p.get("abstract"):
+            st.caption(p["abstract"][:200] + ("..." if len(p["abstract"]) > 200 else ""))
+
+
 # ── Search & Ask ──────────────────────────────────────────────────────────────
 if mode == "Search & Ask":
     col1, col2 = st.columns([3, 1])
@@ -234,19 +247,6 @@ elif mode == "Recent Papers":
     st.success(f"Showing {len(papers)} most recently added papers")
     for p in papers:
         paper_expander(p)
-
-def _render_paper_list(papers):
-    """Render a compact list of papers (title, authors, year, DOI)."""
-    for p in papers:
-        authors = ", ".join(p["authors"][:3])
-        if len(p["authors"]) > 3:
-            authors += " et al."
-        year = f" ({p['year']})" if p["year"] else ""
-        doi_link = f" · [DOI](https://doi.org/{p['doi']})" if p.get("doi") else ""
-        st.markdown(f"**{p['title']}**{year}  \n{authors}{doi_link}")
-        if p.get("abstract"):
-            st.caption(p["abstract"][:200] + ("..." if len(p["abstract"]) > 200 else ""))
-
 
 # ── Library Index ─────────────────────────────────────────────────────────────
 elif mode == "Library Index":
