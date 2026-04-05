@@ -282,50 +282,64 @@ elif mode == "Library Index":
 
     if cached:
         subcategories = load_subcategories()
-
-        col_filter, col_view = st.columns([3, 1])
-        with col_filter:
-            filter_text = st.text_input("Filter categories or papers", placeholder="e.g. regime, neural network...")
-        with col_view:
-            show_subs = st.checkbox("Show subcategories", value=True,
-                                    help="Group large categories into subcategories where available")
-
         categories = cached["categories"]
-        sorted_cats = sorted(categories.items(), key=lambda x: len(x[1]["papers"]), reverse=True)
 
-        for cat_name, cat_data in sorted_cats:
-            papers = cat_data["papers"]
+        # ── Level 1: Category dropdown ─────────────────────────────────────
+        sorted_cat_names = sorted(categories.keys(),
+                                  key=lambda c: len(categories[c]["papers"]), reverse=True)
+        cat_options = [f"{c}  ({len(categories[c]['papers'])} papers)" for c in sorted_cat_names]
 
-            # Filter
-            if filter_text:
-                q = filter_text.lower()
-                name_match = q in cat_name.lower()
-                matching = [p for p in papers if q in p["title"].lower()
-                            or any(q in a.lower() for a in p.get("authors", []))
-                            or q in (p.get("abstract") or "").lower()]
-                if not name_match and not matching:
+        selected_cat_label = st.selectbox("Category", cat_options, index=0)
+        selected_cat = sorted_cat_names[cat_options.index(selected_cat_label)]
+
+        cat_data = categories[selected_cat]
+        cat_papers = cat_data["papers"]
+        paper_by_key = {p["key"]: p for p in cat_papers}
+
+        st.markdown(f"*{cat_data['summary']}*")
+
+        # ── Level 2: Subcategory dropdown (if available) ───────────────────
+        cat_subs = subcategories.get(selected_cat)
+        if cat_subs:
+            sub_names_sorted = sorted(cat_subs.keys(), key=lambda s: -len(cat_subs[s]))
+            sub_options = ["All subcategories"] + [
+                f"{s}  ({len(cat_subs[s])})" for s in sub_names_sorted
+            ]
+            selected_sub_label = st.selectbox("Subcategory", sub_options, index=0)
+
+            if selected_sub_label == "All subcategories":
+                active_papers = cat_papers
+                active_subs = cat_subs
+            else:
+                selected_sub = sub_names_sorted[sub_options.index(selected_sub_label) - 1]
+                active_papers = [paper_by_key[k] for k in cat_subs[selected_sub] if k in paper_by_key]
+                active_subs = None
+        else:
+            active_papers = cat_papers
+            active_subs = None
+
+        # ── Search within selection ────────────────────────────────────────
+        filter_text = st.text_input("Filter papers", placeholder="title, author, keyword...")
+        if filter_text:
+            q = filter_text.lower()
+            active_papers = [p for p in active_papers
+                             if q in p["title"].lower()
+                             or any(q in a.lower() for a in p.get("authors", []))
+                             or q in (p.get("abstract") or "").lower()]
+
+        st.caption(f"{len(active_papers)} papers")
+        st.divider()
+
+        # ── Render papers, grouped by subcategory if showing all ───────────
+        if active_subs and filter_text == "":
+            visible_keys = {p["key"] for p in active_papers}
+            for sub_name in sorted(active_subs.keys(), key=lambda s: -len(active_subs[s])):
+                sub_papers = [paper_by_key[k] for k in active_subs[sub_name] if k in visible_keys]
+                if not sub_papers:
                     continue
-                if not name_match:
-                    papers = matching
-
-            cat_subs = subcategories.get(cat_name) if show_subs else None
-            sub_label = f" · {len(cat_subs)} subcategories" if cat_subs else ""
-            with st.expander(f"**{cat_name}** — {len(papers)} papers{sub_label}"):
-                st.markdown(f"*{cat_data['summary']}*")
+                st.markdown(f"#### {sub_name} &nbsp; <small>({len(sub_papers)})</small>",
+                            unsafe_allow_html=True)
+                _render_paper_list(sub_papers)
                 st.divider()
-
-                if cat_subs:
-                    # Build a set of keys present after filtering
-                    visible_keys = {p["key"] for p in papers}
-                    paper_by_key = {p["key"]: p for p in papers}
-
-                    for sub_name, sub_keys in sorted(cat_subs.items(), key=lambda x: -len(x[1])):
-                        sub_papers = [paper_by_key[k] for k in sub_keys if k in visible_keys]
-                        if not sub_papers:
-                            continue
-                        st.markdown(f"#### {sub_name} &nbsp; <small>({len(sub_papers)})</small>",
-                                    unsafe_allow_html=True)
-                        _render_paper_list(sub_papers)
-                        st.divider()
-                else:
-                    _render_paper_list(papers)
+        else:
+            _render_paper_list(active_papers)
