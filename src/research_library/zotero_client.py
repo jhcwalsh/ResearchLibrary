@@ -1,7 +1,6 @@
 import os
 import re
 from dotenv import load_dotenv
-from pyzotero import zotero
 
 try:
     import fitz  # PyMuPDF
@@ -11,12 +10,16 @@ except ImportError:
 
 load_dotenv(override=True)
 
-_client: zotero.Zotero | None = None
+_client = None
 
 
-def get_client() -> zotero.Zotero:
+def get_client():
+    """Lazily construct a pyzotero client. Importing pyzotero is deferred so
+    modules that only need helpers (e.g. _format_item) can be loaded without
+    network-layer dependencies."""
     global _client
     if _client is None:
+        from pyzotero import zotero
         api_key = os.environ["ZOTERO_API_KEY"]
         library_id = os.environ["ZOTERO_LIBRARY_ID"]
         library_type = os.getenv("ZOTERO_LIBRARY_TYPE", "user")

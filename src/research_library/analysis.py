@@ -156,6 +156,79 @@ Papers:
     return categories
 
 
+# ── Subcategorisation ─────────────────────────────────────────────────────────
+
+SUBCATEGORY_THRESHOLD = 20
+
+
+def _subcategorize(cat_name: str, papers: list[dict]) -> dict[str, list[str]]:
+    """
+    Ask Claude Sonnet to cluster a large category into 3–6 subcategories.
+    Returns {subcategory_name: [paper_key, ...]}. Adapted from the standalone
+    suggest_subcategories.py script.
+    """
+    client = anthropic.Anthropic()
+
+    lines = []
+    for p in papers:
+        abstract = (p.get("abstract") or "")[:120].replace("\n", " ")
+        lines.append(f'{p["key"]}: {p["title"]} | {abstract}')
+
+    prompt = f"""You are sub-categorising a group of {len(papers)} academic papers \
+that all belong to the parent category "{cat_name}".
+
+Identify 3–6 specific, meaningful subcategories that carve this group into coherent clusters.
+Then assign every paper key to exactly one subcategory.
+
+Rules:
+- Subcategory names should be specific and descriptive (not generic like "Other" or "Miscellaneous")
+- Every paper must be assigned — no paper left out
+- Subcategory names should be shorter than the parent category name where possible
+
+Return ONLY valid JSON:
+{{
+  "subcategories": ["Sub A", "Sub B", ...],
+  "assignments": {{"PAPERKEY": "Sub A", ...}}
+}}
+
+Papers:
+{chr(10).join(lines)}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=8000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+    raw = raw.strip()
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not m:
+            return {}
+        data = json.loads(m.group(0))
+
+    assignments = data.get("assignments", {})
+    subcats: dict[str, list[str]] = {}
+    for key, sub in assignments.items():
+        subcats.setdefault(sub, []).append(key)
+
+    # Rescue any unassigned paper into the largest subcategory so no paper is lost.
+    assigned = set(assignments.keys())
+    unassigned = [p["key"] for p in papers if p["key"] not in assigned]
+    if unassigned and subcats:
+        biggest = max(subcats, key=lambda s: len(subcats[s]))
+        subcats[biggest].extend(unassigned)
+
+    return subcats
+
+
 # ── Summarisation ─────────────────────────────────────────────────────────────
 
 def summarize_category(category: str, papers: list[dict]) -> str:
@@ -220,8 +293,15 @@ def build_index(progress_callback=None) -> dict:
         progress(f"Summarising '{cat_name}' ({i+1}/{len(categories)})...")
         cat_papers = [paper_by_key[k] for k in keys if k in paper_by_key]
         summary = summarize_category(cat_name, cat_papers)
+
+        subcategories: dict[str, list[str]] = {}
+        if len(cat_papers) >= SUBCATEGORY_THRESHOLD:
+            progress(f"  Subcategorising '{cat_name}' ({len(cat_papers)} papers)...")
+            subcategories = _subcategorize(cat_name, cat_papers)
+
         index_categories[cat_name] = {
             "summary": summary,
+            "subcategories": subcategories,
             "papers": [
                 {
                     "key": p["key"],

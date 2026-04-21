@@ -14,13 +14,12 @@ from src.research_library.zotero_client import (
 )
 from src.research_library.analysis import build_index, load_cached_index
 
-SUBS_PATH = Path(__file__).parent / "subcategory_suggestions.json"
-
-
-def load_subcategories() -> dict:
-    if SUBS_PATH.exists():
-        return json.loads(SUBS_PATH.read_text(encoding="utf-8"))
-    return {}
+def load_subcategories(cached_index: dict) -> dict:
+    """Extract {category: {subcategory: [keys]}} from the cached index."""
+    return {
+        cat_name: cat_data.get("subcategories") or {}
+        for cat_name, cat_data in cached_index.get("categories", {}).items()
+    }
 
 st.set_page_config(page_title="Research Library", page_icon="📚", layout="wide")
 st.title("📚 Research Library")
@@ -281,7 +280,7 @@ elif mode == "Library Index":
         st.rerun()
 
     if cached:
-        subcategories = load_subcategories()
+        subcategories = load_subcategories(cached)
         categories = cached["categories"]
 
         # ── Level 1: Category dropdown ─────────────────────────────────────
