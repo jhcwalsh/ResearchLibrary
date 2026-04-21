@@ -16,6 +16,7 @@ class TestToolRegistry:
         "search_papers", "get_paper", "list_collections", "get_collection_papers",
         "get_recent_papers", "get_annotations", "get_tags", "get_papers_by_tag",
         "get_fulltext", "get_fulltext_batch",
+        "semantic_search", "list_categories", "get_category_papers", "ask_library",
     }
 
     def test_all_expected_tools_registered(self):
@@ -35,6 +36,9 @@ class TestToolRegistry:
             "get_papers_by_tag": ["tag"],
             "get_fulltext": ["key"],
             "get_fulltext_batch": ["keys"],
+            "semantic_search": ["query"],
+            "get_category_papers": ["category"],
+            "ask_library": ["question"],
         }
         tool_dict = {t.name: t for t in TOOLS}
         for tool_name, required in required_map.items():
@@ -44,7 +48,7 @@ class TestToolRegistry:
 
     def test_optional_tools_have_no_required(self):
         tool_dict = {t.name: t for t in TOOLS}
-        for name in ("list_collections", "get_tags", "get_recent_papers"):
+        for name in ("list_collections", "get_tags", "get_recent_papers", "list_categories"):
             schema = tool_dict[name].inputSchema
             assert "required" not in schema or schema["required"] == []
 

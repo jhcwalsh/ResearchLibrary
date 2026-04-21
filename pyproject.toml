@@ -11,10 +11,14 @@ dependencies = [
     "mcp>=1.0.0",
     "pyzotero>=1.5.0",
     "python-dotenv>=1.0.0",
+    "anthropic>=0.40.0",
+    "voyageai>=0.3.0",
+    "numpy>=1.26",
 ]
 
 [project.scripts]
 research-library = "research_library.server:main"
+research-admin = "research_library.cli:main"
 
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.27.0"]
