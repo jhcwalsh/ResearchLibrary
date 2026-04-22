@@ -20,7 +20,7 @@ load_dotenv(override=True)
 EMBEDDINGS_PATH = INDEX_CACHE_PATH.parent / "embeddings.npz"
 
 # voyage-3 supports 128 inputs per batch and 16k tokens per input
-VOYAGE_MODEL = "voyage-3"
+VOYAGE_MODEL = "voyage-finance-2"
 BATCH_SIZE = 128
 
 _client: voyageai.Client | None = None
