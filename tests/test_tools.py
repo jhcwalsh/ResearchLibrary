@@ -17,6 +17,8 @@ class TestToolRegistry:
         "get_recent_papers", "get_annotations", "get_tags", "get_papers_by_tag",
         "get_fulltext", "get_fulltext_batch",
         "semantic_search", "list_categories", "get_category_papers", "ask_library",
+        "add_paper", "add_papers_batch", "add_to_collection", "remove_from_collection",
+        "add_tag", "remove_tag", "update_paper", "attach_pdf", "create_collection",
     }
 
     def test_all_expected_tools_registered(self):
@@ -39,6 +41,15 @@ class TestToolRegistry:
             "semantic_search": ["query"],
             "get_category_papers": ["category"],
             "ask_library": ["question"],
+            "add_paper": ["title", "authors"],
+            "add_papers_batch": ["papers"],
+            "add_to_collection": ["item_key", "collection_key"],
+            "remove_from_collection": ["item_key", "collection_key"],
+            "add_tag": ["item_key", "tag"],
+            "remove_tag": ["item_key", "tag"],
+            "update_paper": ["item_key"],
+            "attach_pdf": ["item_key", "pdf_path"],
+            "create_collection": ["name"],
         }
         tool_dict = {t.name: t for t in TOOLS}
         for tool_name, required in required_map.items():
@@ -144,3 +155,57 @@ class TestHandleTool:
     async def test_unknown_tool_returns_message(self):
         result = await handle_tool("nonexistent_tool", {})
         assert "Unknown tool" in result[0].text
+
+
+# ── Semantic-index staleness flag ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+class TestIndexStalenessFlag:
+    """Writes land in Zotero immediately but reach semantic_search only after
+    `research-admin all`, so paper writes must say so."""
+
+    async def test_add_paper_flags_stale_index(self):
+        created = {"key": "K1", "title": "New", "duplicate": False}
+        with patch("research_library.tools.zc.create_paper", return_value=created):
+            result = await handle_tool("add_paper", {"title": "New", "authors": ["A"]})
+        data = json.loads(result[0].text)
+        assert data["semantic_index_stale"] is True
+        assert "research-admin all" in data["index_note"]
+
+    async def test_no_flag_when_paper_was_a_duplicate(self):
+        existing = {"key": "K1", "title": "Old", "duplicate": True}
+        with patch("research_library.tools.zc.create_paper", return_value=existing):
+            result = await handle_tool("add_paper", {"title": "Old", "authors": ["A"]})
+        data = json.loads(result[0].text)
+        assert "semantic_index_stale" not in data
+
+    async def test_batch_flags_only_when_something_created(self):
+        nothing = {"created": [], "duplicates": [{"key": "K1"}], "failed": []}
+        with patch("research_library.tools.zc.create_papers_batch", return_value=nothing):
+            result = await handle_tool("add_papers_batch", {"papers": [{"title": "X"}]})
+        assert "semantic_index_stale" not in json.loads(result[0].text)
+
+        some = {"created": [{"key": "K2"}], "duplicates": [], "failed": []}
+        with patch("research_library.tools.zc.create_papers_batch", return_value=some):
+            result = await handle_tool("add_papers_batch", {"papers": [{"title": "X"}]})
+        assert json.loads(result[0].text)["semantic_index_stale"] is True
+
+    async def test_update_flags_only_for_indexed_fields(self):
+        with patch("research_library.tools.zc.update_paper", return_value={"key": "K1"}):
+            result = await handle_tool("update_paper", {"item_key": "K1", "title": "T"})
+        assert json.loads(result[0].text)["semantic_index_stale"] is True
+
+        with patch("research_library.tools.zc.update_paper", return_value={"key": "K1"}):
+            result = await handle_tool("update_paper", {"item_key": "K1", "pages": "1-2"})
+        assert "semantic_index_stale" not in json.loads(result[0].text)
+
+    async def test_tag_and_collection_writes_are_not_flagged(self):
+        """Categories come from paper metadata, not Zotero tags or collections."""
+        with patch("research_library.tools.zc.add_tag", return_value={"ok": True}):
+            result = await handle_tool("add_tag", {"item_key": "K1", "tag": "t"})
+        assert "semantic_index_stale" not in json.loads(result[0].text)
+
+        with patch("research_library.tools.zc.add_to_collection", return_value={"ok": True}):
+            result = await handle_tool("add_to_collection",
+                                       {"item_key": "K1", "collection_key": "C1"})
+        assert "semantic_index_stale" not in json.loads(result[0].text)

@@ -166,6 +166,161 @@ TOOLS: list[types.Tool] = [
             "required": ["question"],
         },
     ),
+    # ── Write tools ──────────────────────────────────────────────────────────
+    types.Tool(
+        name="add_paper",
+        description=(
+            "Create a new paper in the Zotero library. By default, if a paper with the same DOI is "
+            "already present, returns the existing item rather than creating a duplicate; pass "
+            "force=true to override. The DOI check scans the whole library (Zotero has no "
+            "server-side DOI lookup), so the first write call in a session takes ~20s and later "
+            "ones are fast. WRITE TOOL: modifies the user's Zotero library — the agent "
+            "should confirm intent with the user before calling."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "authors": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Each author as 'Last, First' or 'Full Name'.",
+                },
+                "item_type": {"type": "string", "default": "journalArticle"},
+                "year": {"type": "string"},
+                "doi": {"type": "string"},
+                "journal": {"type": "string"},
+                "volume": {"type": "string"},
+                "issue": {"type": "string"},
+                "pages": {"type": "string"},
+                "url": {"type": "string"},
+                "abstract": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "collection_keys": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Zotero collection keys to file the new paper under.",
+                },
+                "force": {"type": "boolean", "default": False, "description": "Skip DOI dedup check."},
+            },
+            "required": ["title", "authors"],
+        },
+    ),
+    types.Tool(
+        name="add_papers_batch",
+        description=(
+            "Create multiple papers in a single batched call (up to 50 at a time, auto-chunked). "
+            "Each entry follows the same shape as add_paper. Deduplicates by DOI both against the "
+            "library and within the batch itself. Returns {created, duplicates, failed}. "
+            "WRITE TOOL: confirm intent before calling."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "papers": {"type": "array", "items": {"type": "object"}},
+                "force": {"type": "boolean", "default": False},
+            },
+            "required": ["papers"],
+        },
+    ),
+    types.Tool(
+        name="add_to_collection",
+        description="Add an existing paper to a collection. WRITE TOOL.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "item_key": {"type": "string"},
+                "collection_key": {"type": "string"},
+            },
+            "required": ["item_key", "collection_key"],
+        },
+    ),
+    types.Tool(
+        name="remove_from_collection",
+        description="Remove a paper from a collection (paper itself is not deleted). WRITE TOOL.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "item_key": {"type": "string"},
+                "collection_key": {"type": "string"},
+            },
+            "required": ["item_key", "collection_key"],
+        },
+    ),
+    types.Tool(
+        name="add_tag",
+        description="Add a tag to a paper. WRITE TOOL.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "item_key": {"type": "string"},
+                "tag": {"type": "string"},
+            },
+            "required": ["item_key", "tag"],
+        },
+    ),
+    types.Tool(
+        name="remove_tag",
+        description="Remove a tag from a paper. WRITE TOOL.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "item_key": {"type": "string"},
+                "tag": {"type": "string"},
+            },
+            "required": ["item_key", "tag"],
+        },
+    ),
+    types.Tool(
+        name="update_paper",
+        description=(
+            "Update fields on an existing paper. Supported fields: title, year, doi, journal, volume, "
+            "issue, pages, url, abstract. Only provided fields are updated; others are left alone. WRITE TOOL."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "item_key": {"type": "string"},
+                "title": {"type": "string"},
+                "year": {"type": "string"},
+                "doi": {"type": "string"},
+                "journal": {"type": "string"},
+                "volume": {"type": "string"},
+                "issue": {"type": "string"},
+                "pages": {"type": "string"},
+                "url": {"type": "string"},
+                "abstract": {"type": "string"},
+            },
+            "required": ["item_key"],
+        },
+    ),
+    types.Tool(
+        name="attach_pdf",
+        description=(
+            "Attach a local PDF file to an existing paper as a child attachment. pdf_path must be an "
+            "absolute path on the machine running the MCP server. WRITE TOOL."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "item_key": {"type": "string"},
+                "pdf_path": {"type": "string"},
+            },
+            "required": ["item_key", "pdf_path"],
+        },
+    ),
+    types.Tool(
+        name="create_collection",
+        description="Create a new collection (folder), optionally as a child of an existing one. WRITE TOOL.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "parent_key": {"type": "string", "description": "Parent collection key for nested folders."},
+            },
+            "required": ["name"],
+        },
+    ),
 ]
 
 
@@ -177,6 +332,30 @@ def _load_cached_index() -> dict | None:
     if not INDEX_CACHE_PATH.exists():
         return None
     return json.loads(INDEX_CACHE_PATH.read_text(encoding="utf-8"))
+
+
+def _index_note(changed: bool) -> dict:
+    """Flag that a write is not yet visible to the index-backed tools.
+
+    semantic_search, list_categories and ask_library all read the cached index
+    and embeddings, which are rebuilt offline by `research-admin all`. Only
+    writes that add papers or edit their metadata matter here: categories are
+    derived from that metadata, not from Zotero collections or tags.
+    """
+    if not changed:
+        return {}
+    index = _load_cached_index()
+    if index is None:
+        built = "which has not been built yet"
+    else:
+        built = f"last built {(index.get('generated_at') or '')[:10] or 'at an unknown time'}"
+    return {
+        "semantic_index_stale": True,
+        "index_note": (
+            f"Not yet visible to semantic_search, list_categories or ask_library: "
+            f"they read a cached index {built}. Run `research-admin all` to include this change."
+        ),
+    }
 
 
 def _hydrate_paper(key: str, index: dict | None) -> dict | None:
@@ -264,6 +443,51 @@ async def handle_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
     if name == "ask_library":
         return await _handle_ask_library(arguments)
+
+    # ── Write tool dispatch ──────────────────────────────────────────────
+    if name == "add_paper":
+        result = zc.create_paper(**arguments)
+        changed = not result.get("duplicate") and "error" not in result
+        return _text(json.dumps({**result, **_index_note(changed)}, indent=2))
+
+    if name == "add_papers_batch":
+        result = zc.create_papers_batch(
+            arguments["papers"],
+            force=arguments.get("force", False),
+        )
+        return _text(json.dumps({**result, **_index_note(bool(result["created"]))}, indent=2))
+
+    if name == "add_to_collection":
+        result = zc.add_to_collection(arguments["item_key"], arguments["collection_key"])
+        return _text(json.dumps(result, indent=2))
+
+    if name == "remove_from_collection":
+        result = zc.remove_from_collection(arguments["item_key"], arguments["collection_key"])
+        return _text(json.dumps(result, indent=2))
+
+    if name == "add_tag":
+        result = zc.add_tag(arguments["item_key"], arguments["tag"])
+        return _text(json.dumps(result, indent=2))
+
+    if name == "remove_tag":
+        result = zc.remove_tag(arguments["item_key"], arguments["tag"])
+        return _text(json.dumps(result, indent=2))
+
+    if name == "update_paper":
+        item_key = arguments.pop("item_key")
+        result = zc.update_paper(item_key, **arguments)
+        # Categories and embeddings are derived from title/abstract/authors/year.
+        indexed_fields = {"title", "abstract", "year", "doi"}
+        changed = bool(indexed_fields & set(arguments)) and "error" not in result
+        return _text(json.dumps({**result, **_index_note(changed)}, indent=2))
+
+    if name == "attach_pdf":
+        result = zc.attach_pdf(arguments["item_key"], arguments["pdf_path"])
+        return _text(json.dumps(result, indent=2))
+
+    if name == "create_collection":
+        result = zc.create_collection(arguments["name"], arguments.get("parent_key"))
+        return _text(json.dumps(result, indent=2))
 
     return _text(f"Unknown tool: {name}")
 
