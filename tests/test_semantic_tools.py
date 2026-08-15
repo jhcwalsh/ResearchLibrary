@@ -161,6 +161,50 @@ class TestAskLibrary:
         assert {p["key"] for p in data["papers_consulted"]} == {"K1", "K2"}
         assert data["used_fulltext_for"] == []
 
+    async def test_fulltext_looks_past_the_top_hits(self, fake_index_file):
+        """The top semantic hits often have no PDF. Slicing to the top 3 before
+        fetching meant ask_library answered from abstracts alone even when a
+        slightly lower-ranked paper was available in full."""
+        from research_library.tools import handle_tool
+
+        ranking = {
+            "categories": [{"name": "Regime Switching", "score": 0.9}],
+            "papers": [
+                {"key": "K1", "score": 0.90, "category": "Regime Switching"},
+                {"key": "K2", "score": 0.88, "category": "Regime Switching"},
+                {"key": "K3", "score": 0.86, "category": "Risk Premia"},
+                {"key": "K4", "score": 0.84, "category": "Risk Premia"},
+            ],
+        }
+        k4 = {"key": "K4", "title": "Deep paper", "authors": ["Lee"],
+              "year": "2022", "abstract": "about depth", "doi": "10.1/d"}
+
+        def fake_fulltext(key, char_limit=3000):
+            if key == "K4":
+                return {"content": "the full body of K4", "source": "zotero_index",
+                        "truncated": False, "error": None, "total_chars": 19}
+            return {"content": None, "source": "none", "truncated": False,
+                    "error": "no_attachment"}
+
+        captured = {}
+
+        def fake_create(**kwargs):
+            captured["prompt"] = kwargs["messages"][0]["content"]
+            return SimpleNamespace(content=[SimpleNamespace(text="answer [K4]")])
+
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=fake_create))
+
+        with patch("research_library.embeddings.search_by_category", return_value=ranking), \
+             patch("research_library.tools.zc.get_paper", return_value=k4), \
+             patch("research_library.zotero_client.get_fulltext", side_effect=fake_fulltext), \
+             patch("anthropic.Anthropic", return_value=fake_client):
+            result = await handle_tool("ask_library",
+                                       {"question": "regimes?", "use_fulltext": True})
+
+        data = json.loads(result[0].text)
+        assert data["used_fulltext_for"] == ["K4"]
+        assert "the full body of K4" in captured["prompt"]
+
     async def test_missing_embeddings_returns_message(self, fake_index_file):
         from research_library.tools import handle_tool
         with patch("research_library.embeddings.search_by_category",

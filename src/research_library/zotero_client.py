@@ -156,16 +156,41 @@ def get_fulltext(item_key: str, char_limit: int = 40000) -> dict:
         return {"content": None, "source": "none", "truncated": False, "error": f"api_error: {e}"}
 
 
-def get_fulltext_batch(papers: list[dict], max_papers: int = 5, char_limit: int = 3000) -> list[dict]:
-    result = []
-    for p in papers[:max_papers]:
+def get_fulltext_batch(
+    papers: list[dict],
+    max_papers: int = 5,
+    char_limit: int = 3000,
+    max_attempts: int | None = None,
+) -> list[dict]:
+    """Fetch full text for up to max_papers papers that actually have it.
+
+    Papers are tried in order, and ones with no indexed text are skipped over
+    rather than using up the budget: keyword results are often headed by older
+    items with no PDF attached, so taking the first max_papers blindly could
+    return nothing usable even when later papers were fully available.
+
+    Each attempt costs two API calls, so at most max_attempts papers are tried
+    (default 5x max_papers). Papers that were tried carry a "fulltext" key
+    whether or not text was found; papers never reached do not. Input order is
+    preserved either way.
+    """
+    if max_attempts is None:
+        max_attempts = max_papers * 5
+
+    result: list[dict] = []
+    found = attempts = 0
+    for i, p in enumerate(papers):
+        if found >= max_papers or attempts >= max_attempts:
+            result.extend(papers[i:])  # untried papers pass through untouched
+            break
+        attempts += 1
         try:
             ft = get_fulltext(p["key"], char_limit=char_limit)
         except Exception as e:
             ft = {"content": None, "source": "none", "truncated": False, "error": str(e)}
+        if ft.get("content"):
+            found += 1
         result.append({**p, "fulltext": ft})
-    # Papers beyond max_papers get no fulltext key
-    result.extend(papers[max_papers:])
     return result
 
 

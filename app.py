@@ -190,7 +190,9 @@ if mode == "Search & Ask":
                     with st.spinner(f"Fetching full text for up to {max_ft} papers..."):
                         papers_with_text = get_fulltext_batch(papers, max_papers=max_ft, char_limit=3000)
                     available = sum(1 for p in papers_with_text if p.get("fulltext", {}).get("content"))
-                    st.caption(f"Full text available for {available} of {min(max_ft, len(papers))} papers")
+                    tried = sum(1 for p in papers_with_text if "fulltext" in p)
+                    st.caption(f"Full text found for {available} of the {max_ft} requested "
+                               f"({tried} papers checked)")
                 else:
                     papers_with_text = papers
 

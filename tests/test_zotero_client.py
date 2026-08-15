@@ -115,6 +115,55 @@ class TestGetFulltextBatch:
         for p in result[2:]:
             assert "fulltext" not in p
 
+    @staticmethod
+    def _ft(content):
+        return {"content": content, "source": "zotero_index" if content else "none",
+                "truncated": False, "error": None if content else "no_attachment",
+                "total_chars": len(content or "")}
+
+    def test_skips_papers_without_text_and_keeps_looking(self):
+        """Search results are often headed by older papers with no PDF; taking
+        the first max_papers blindly returned nothing usable in that case."""
+        papers = [self._make_paper(f"K{i}") for i in range(5)]
+        has_text = {"K3", "K4"}
+
+        def fake(key, char_limit):
+            return self._ft("text" if key in has_text else None)
+
+        with patch("research_library.zotero_client.get_fulltext", side_effect=fake):
+            result = get_fulltext_batch(papers, max_papers=2)
+
+        with_text = [p for p in result if p.get("fulltext", {}).get("content")]
+        assert [p["key"] for p in with_text] == ["K3", "K4"]
+        assert len(result) == 5
+        assert [p["key"] for p in result] == [f"K{i}" for i in range(5)]
+
+    def test_stops_once_enough_papers_have_text(self):
+        papers = [self._make_paper(f"K{i}") for i in range(10)]
+        with patch("research_library.zotero_client.get_fulltext",
+                   side_effect=lambda key, char_limit: self._ft("text")) as mock_ft:
+            result = get_fulltext_batch(papers, max_papers=3)
+        assert mock_ft.call_count == 3
+        assert all("fulltext" not in p for p in result[3:])
+
+    def test_attempt_budget_bounds_the_scan(self):
+        """Two API calls per paper tried, so a list where nothing has text must
+        not walk the whole thing."""
+        papers = [self._make_paper(f"K{i}") for i in range(100)]
+        with patch("research_library.zotero_client.get_fulltext",
+                   side_effect=lambda key, char_limit: self._ft(None)) as mock_ft:
+            result = get_fulltext_batch(papers, max_papers=2, max_attempts=6)
+        assert mock_ft.call_count == 6
+        assert len(result) == 100
+        assert all("fulltext" not in p for p in result[6:])
+
+    def test_default_attempt_budget_scales_with_max_papers(self):
+        papers = [self._make_paper(f"K{i}") for i in range(100)]
+        with patch("research_library.zotero_client.get_fulltext",
+                   side_effect=lambda key, char_limit: self._ft(None)) as mock_ft:
+            get_fulltext_batch(papers, max_papers=2)
+        assert mock_ft.call_count == 10
+
     def test_batch_handles_individual_failures_gracefully(self):
         papers = [self._make_paper("K1"), self._make_paper("K2")]
         def side_effect(key, char_limit):

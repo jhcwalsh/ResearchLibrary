@@ -97,12 +97,18 @@ TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="get_fulltext_batch",
-        description="Get full text for multiple papers at once. Useful for answering questions across a set of papers.",
+        description=(
+            "Get full text for multiple papers at once. Useful for answering questions across a "
+            "set of papers. Papers with no attached or indexed PDF are skipped and the next key "
+            "is tried instead, so max_papers counts papers actually returned with text. Pass keys "
+            "in priority order and supply more than you need. Keys never reached come back with "
+            "error 'not_fetched'."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "keys": {"type": "array", "items": {"type": "string"}, "description": "List of Zotero item keys"},
-                "max_papers": {"type": "integer", "default": 5, "description": "Max papers to fetch full text for"},
+                "keys": {"type": "array", "items": {"type": "string"}, "description": "List of Zotero item keys, most relevant first"},
+                "max_papers": {"type": "integer", "default": 5, "description": "How many papers with text to return"},
                 "char_limit": {"type": "integer", "default": 3000, "description": "Max characters per paper"},
             },
             "required": ["keys"],
@@ -425,7 +431,11 @@ async def handle_tool(name: str, arguments: dict) -> list[types.TextContent]:
         papers = zc.get_fulltext_batch(fake_papers, arguments.get("max_papers", 5), arguments.get("char_limit", 3000))
         out = []
         for p in papers:
-            ft = p.get("fulltext", {})
+            if "fulltext" not in p:
+                # Enough papers already had text, or the scan budget ran out
+                out.append({"key": p["key"], "error": "not_fetched"})
+                continue
+            ft = p["fulltext"]
             if ft.get("content"):
                 out.append({"key": p["key"], "content": ft["content"], "truncated": ft["truncated"]})
             else:
@@ -582,11 +592,11 @@ async def _handle_ask_library(arguments: dict) -> list[types.TextContent]:
     if not hydrated:
         return _text("No relevant papers found for this question.")
 
-    # Optionally fetch full text for the top 3
+    # Fetch full text for 3 papers that have it, rather than the top 3 outright:
+    # highly ranked papers often have no PDF, which left this on abstracts only.
     fulltext_map: dict[str, str] = {}
     if use_fulltext:
-        top_three = hydrated[:3]
-        batch = zc.get_fulltext_batch(top_three, max_papers=3, char_limit=4000)
+        batch = zc.get_fulltext_batch(hydrated, max_papers=3, char_limit=4000, max_attempts=8)
         for p in batch:
             ft = p.get("fulltext", {})
             if ft.get("content"):
