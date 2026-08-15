@@ -16,7 +16,7 @@ from research_library.zotero_client import (
     get_fulltext_batch,
     PYMUPDF_AVAILABLE,
 )
-from tests.conftest import KNOWN_PAPER_KEY, KNOWN_PAPER_TITLE
+from tests.conftest import KNOWN_PAPER_KEY, KNOWN_PAPER_TITLE, KNOWN_FULLTEXT_KEYS
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -237,12 +237,20 @@ class TestZoteroClientIntegration:
         assert result["truncated"] is True
 
     def test_get_fulltext_batch_integration(self):
-        from research_library.zotero_client import search_papers, get_fulltext_batch
-        papers = search_papers("optimization", limit=3)
+        """Pinned keys, not a keyword search: results are ordered by modification
+        date, and the top hits for a term are often older papers with no PDF at
+        all — which made this assert on whichever papers happened to sort first."""
+        from research_library.zotero_client import get_fulltext_batch
+        papers = [{"key": k} for k in KNOWN_FULLTEXT_KEYS]
         batch = get_fulltext_batch(papers, max_papers=2, char_limit=200)
-        papers_with_ft = [p for p in batch if p.get("fulltext", {}).get("content")]
-        assert len(papers_with_ft) >= 1
-        assert all(len(p["fulltext"]["content"]) <= 200 for p in papers_with_ft)
+
+        assert len(batch) == len(KNOWN_FULLTEXT_KEYS)
+        fetched = batch[:2]
+        assert all(p["fulltext"]["content"] for p in fetched)
+        assert all(len(p["fulltext"]["content"]) == 200 for p in fetched)
+        assert all(p["fulltext"]["truncated"] for p in fetched)
+        # Papers past max_papers are passed through untouched, with no fulltext key
+        assert "fulltext" not in batch[2]
 
     def test_pymupdf_flag_is_bool(self):
         assert isinstance(PYMUPDF_AVAILABLE, bool)
