@@ -4,8 +4,9 @@ Subcommands:
     refresh   Rebuild the library index if Zotero paper count changed
     embed     Recompute Voyage embeddings from the cached index
     links     Regenerate paper_index.md
+    contents  Write cited topic summaries for the app's Contents page
     download  Attempt to fetch PDFs for items missing attachments
-    all       Run refresh, embed, links in order
+    all       Run refresh, embed, links, contents in order
 
 Run `research-admin <command> --help` for per-subcommand options.
 """
@@ -145,6 +146,18 @@ def cmd_links(args, log: logging.Logger) -> int:
     return 0
 
 
+def cmd_contents(args, log: logging.Logger) -> int:
+    from .contents import build_topic_summaries
+    try:
+        result = build_topic_summaries(force=args.force, progress=log.info)
+    except FileNotFoundError as e:
+        log.error(str(e))
+        return 1
+    log.info(f"Topic summaries: {result['written']} written, {result['skipped']} unchanged"
+             + (f", failed: {', '.join(result['failed'])}" if result["failed"] else ""))
+    return 1 if result["failed"] else 0
+
+
 def cmd_download(args, log: logging.Logger) -> int:
     from .downloads import download_missing
     try:
@@ -168,7 +181,10 @@ def cmd_all(args, log: logging.Logger) -> int:
     rc = cmd_embed(argparse.Namespace(force=True), log)
     if rc:
         return rc
-    return cmd_links(argparse.Namespace(), log)
+    rc = cmd_links(argparse.Namespace(), log)
+    if rc:
+        return rc
+    return cmd_contents(argparse.Namespace(force=False), log)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -191,12 +207,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_links = sub.add_parser("links", help="Regenerate paper_index.md")
     p_links.set_defaults(func=cmd_links)
 
+    p_contents = sub.add_parser("contents", help="Write cited topic summaries for the Contents page")
+    p_contents.add_argument("--force", action="store_true", help="Rewrite every topic, not just changed ones")
+    p_contents.set_defaults(func=cmd_contents)
+
     p_download = sub.add_parser("download", help="Try to fetch missing PDFs from Zotero items")
     p_download.add_argument("--download", action="store_true", help="Actually attach PDFs (default is dry-run)")
     p_download.add_argument("--limit", type=int, default=None, help="Max items to process")
     p_download.set_defaults(func=cmd_download)
 
-    p_all = sub.add_parser("all", help="Run refresh, embed, and links in order")
+    p_all = sub.add_parser("all", help="Run refresh, embed, links and contents in order")
     p_all.add_argument("--force", action="store_true", help="Force rebuild even if paper count unchanged")
     p_all.set_defaults(func=cmd_all)
 

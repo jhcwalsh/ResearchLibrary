@@ -1,5 +1,35 @@
 # Session notes
 
+## 2026-10-16 (later) — Contents page with cited topic summaries
+
+**Done**
+- New `src/research_library/contents.py`: Sonnet 5.5 writes, per index category, a 150-250 word
+  overview, a note per subtopic and 3-6 "start with" papers, citing Zotero keys in square brackets.
+  Cached in `.cache/topic_summaries.json` (gitignored with the rest of `.cache/`) with a fingerprint,
+  so a topic is only rewritten when its papers or subtopic grouping change. Four topics run in parallel;
+  the file is saved after each one finishes.
+- `research-admin contents [--force]` in `cli.py`; `all` now runs it last.
+- `links.py`: `paper_link` helper (DOI, else URL, else Scholar search) shared with the app.
+- `app.py`: "Contents" is now the first sidebar mode. Filterable topic list on the left; on the right
+  the overview with `[KEY]` citations rendered as linked "Ilmanen et al. 2020" names, the start-with
+  list, and an expander per subtopic (newest first). Warns when a summary predates the topic's papers.
+- `tests/test_contents.py` (9 tests). 133 tests pass.
+- Live run wrote all 19 topics in about 50 seconds, none failed. Checked in a browser: overview,
+  subtopic expander, a topic with no subcategories, and the filter all render.
+
+**Why**
+- The Library Index page is a flat list; this gives a newcomer a way in to each topic, with every
+  claim traceable to a paper.
+
+**Broken / unsure**
+- Many citations show "n.d." because the year is missing in Zotero. Papers with no author show the
+  title twice ("Margin of Safety · Margin of Safety n.d."). Both are data quality, not code.
+- Summary quality has had one read-through, not a careful check against the papers.
+
+**Next**
+- Fill in missing years and authors in Zotero for the Titans Brief items, then `research-admin contents --force`.
+- Consider an MCP tool that returns a topic summary so Claude Desktop can use them too.
+
 ## 2026-10-16 — Switched to Claude Haiku 5.5 / Sonnet 5.5
 
 **Done**

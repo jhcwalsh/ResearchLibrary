@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import streamlit as st
@@ -14,6 +15,10 @@ from src.research_library.zotero_client import (
 )
 from src.research_library.analysis import build_index, load_cached_index
 from src.research_library.llm import HAIKU, SONNET, response_text
+from src.research_library.contents import (
+    load_topic_summaries, render_citations, short_cite, topic_fingerprint,
+)
+from src.research_library.links import _extract_year, paper_link
 
 def load_subcategories(cached_index: dict) -> dict:
     """Extract {category: {subcategory: [keys]}} from the cached index."""
@@ -25,7 +30,8 @@ def load_subcategories(cached_index: dict) -> dict:
 st.set_page_config(page_title="Research Library", page_icon="📚", layout="wide")
 st.title("📚 Research Library")
 
-mode = st.sidebar.radio("Mode", ["Search & Ask", "Browse Collections", "Browse Tags", "Recent Papers", "Library Index"])
+mode = st.sidebar.radio("Mode", ["Contents", "Search & Ask", "Browse Collections", "Browse Tags",
+                                 "Recent Papers", "Library Index"])
 
 
 def format_paper(p):
@@ -83,6 +89,58 @@ def ask_claude(question, papers, use_fulltext=False):
         }]
     ) as stream:
         return response_text(stream.get_final_message())
+
+
+def md_safe(text: str) -> str:
+    """Stop titles and summaries tripping Streamlit markdown: $ starts LaTeX, [ ] break links."""
+    return (text or "").replace("$", r"\$")
+
+
+def paper_line(p: dict) -> str:
+    # Zotero keeps italics as HTML in some titles, e.g. "Returns: <i>58 Years</i>"
+    title = re.sub(r"<[^>]+>", "", p["title"])
+    title = md_safe(title).replace("[", "(").replace("]", ")")
+    return f"- [{title}]({paper_link(p)}) · {short_cite(p)}"
+
+
+def by_year_desc(papers: list[dict]) -> list[dict]:
+    return sorted(papers, key=lambda p: _extract_year(p.get("year") or "") or "0", reverse=True)
+
+
+def render_topic(name: str, cat: dict, summary: dict | None, papers_by_key: dict):
+    """One topic on the Contents page: cited overview, papers to start with, subtopics."""
+    papers = cat["papers"]
+    subs = cat.get("subcategories") or {}
+    st.subheader(name)
+    st.caption(f"{len(papers)} papers · {len(subs)} subtopics")
+
+    if summary:
+        if summary.get("fingerprint") != topic_fingerprint(cat):
+            st.caption("This summary predates the topic's latest papers. "
+                       "Run `research-admin contents` to refresh it.")
+        st.markdown(render_citations(md_safe(summary["overview"]), papers_by_key))
+        key_papers = [papers_by_key[k] for k in summary.get("key_papers", []) if k in papers_by_key]
+        if key_papers:
+            st.markdown("**Start with**")
+            st.markdown("\n".join(paper_line(p) for p in key_papers))
+    else:
+        st.markdown(f"*{md_safe(cat['summary'])}*")
+
+    st.markdown("#### Subtopics")
+    by_key = {p["key"]: p for p in papers}
+    grouped = set()
+    notes = (summary or {}).get("subtopics", {})
+    for sub in sorted(subs, key=lambda s: -len(subs[s])):
+        sub_papers = [by_key[k] for k in subs[sub] if k in by_key]
+        grouped.update(subs[sub])
+        with st.expander(f"{sub} ({len(sub_papers)})"):
+            if notes.get(sub):
+                st.markdown(render_citations(md_safe(notes[sub]), papers_by_key))
+            st.markdown("\n".join(paper_line(p) for p in by_year_desc(sub_papers)))
+    rest = [p for p in papers if p["key"] not in grouped]
+    if rest:
+        with st.expander(f"Other papers ({len(rest)})"):
+            st.markdown("\n".join(paper_line(p) for p in by_year_desc(rest)))
 
 
 def paper_expander(p):
@@ -159,7 +217,37 @@ def _render_paper_list(papers):
 
 
 # ── Search & Ask ──────────────────────────────────────────────────────────────
-if mode == "Search & Ask":
+if mode == "Contents":
+    cached = load_cached_index()
+    if not cached:
+        st.info("No library index yet. Build one under Library Index, or run `research-admin refresh`.")
+    else:
+        categories = cached["categories"]
+        summaries = load_topic_summaries()
+        all_papers = {p["key"]: p for c in categories.values() for p in c["papers"]}
+        topics = sorted(categories, key=lambda c: -len(categories[c]["papers"]))
+
+        written = [s["generated_at"] for s in summaries.values() if s.get("generated_at")]
+        st.caption(f"{cached['unique_papers']} papers · {len(topics)} topic areas"
+                   + (f" · summaries written {max(written)[:10]}" if written else ""))
+        if not summaries:
+            st.info("Topic summaries haven't been written yet. Run `research-admin contents`. "
+                    "Showing the short index summaries for now.")
+
+        toc_col, body_col = st.columns([1, 3], gap="large")
+        with toc_col:
+            topic_filter = st.text_input("Filter topics", placeholder="e.g. private equity")
+            shown = [t for t in topics if topic_filter.lower() in t.lower()]
+            topic = st.radio("Topic areas", shown, key="contents_topic",
+                             format_func=lambda t: f"{t} ({len(categories[t]['papers'])})") if shown else None
+            if not shown:
+                st.caption("No topic matches that filter.")
+        with body_col:
+            if topic:
+                render_topic(topic, categories[topic], summaries.get(topic), all_papers)
+
+
+elif mode == "Search & Ask":
     col1, col2 = st.columns([3, 1])
     with col1:
         query = st.text_input("Search your library", placeholder="e.g. regime switching, asset allocation...")

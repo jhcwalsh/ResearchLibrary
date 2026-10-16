@@ -21,6 +21,17 @@ def _scholar_url(title: str, authors: list) -> str:
     return "https://scholar.google.com/scholar?q=" + urllib.parse.quote(query)
 
 
+def paper_link(p: dict) -> str:
+    """Best link for a paper: its DOI, else its URL, else a Google Scholar search."""
+    doi = (p.get("doi") or "").strip()
+    url = (p.get("url") or "").strip()
+    if doi:
+        return f"https://doi.org/{doi}"
+    if url:
+        return url
+    return _scholar_url(p["title"], p.get("authors", []))
+
+
 def generate_links(output_path: Path | None = None) -> dict:
     """Write a markdown index with clickable links for every paper. Returns
     {written, direct_links, scholar_links, total_papers}."""
@@ -57,19 +68,11 @@ def generate_links(output_path: Path | None = None) -> dict:
             year = _extract_year(p.get("year", "") or "")
             year_str = f" ({year})" if year else ""
 
-            doi = (p.get("doi") or "").strip()
-            url = (p.get("url") or "").strip()
-
-            if doi:
-                link = f"https://doi.org/{doi}"
-                badge = ""
-                direct_links += 1
-            elif url:
-                link = url
+            link = paper_link(p)
+            if (p.get("doi") or "").strip() or (p.get("url") or "").strip():
                 badge = ""
                 direct_links += 1
             else:
-                link = _scholar_url(p["title"], authors)
                 badge = r" \[Scholar\]"
                 scholar_links += 1
 
