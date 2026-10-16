@@ -94,3 +94,18 @@ def test_console_logging_survives_characters_the_console_cannot_encode(monkeypat
     for h in list(logging.getLogger().handlers):
         logging.getLogger().removeHandler(h)
         h.close()
+
+
+# ── fetch_pdf content check ────────────────────────────────────────────────────
+
+def test_fetch_pdf_rejects_bytes_that_are_not_a_pdf(monkeypatch):
+    """An octet-stream response can be an HTML error page; never attach that."""
+    monkeypatch.setattr(downloads, "try_direct_url", lambda url: b"<html>Access denied</html>")
+    monkeypatch.setattr(downloads, "try_unpaywall", lambda doi: None)
+    monkeypatch.setattr(downloads, "try_scrape_for_pdf", lambda url: None)
+    assert downloads.fetch_pdf("", "https://x.org/p.pdf") == (None, "failed")
+
+
+def test_fetch_pdf_accepts_real_pdf_bytes(monkeypatch):
+    monkeypatch.setattr(downloads, "try_direct_url", lambda url: b"%PDF-1.7\n...")
+    assert downloads.fetch_pdf("", "https://x.org/p.pdf") == (b"%PDF-1.7\n...", "direct_url")

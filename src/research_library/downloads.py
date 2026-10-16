@@ -139,22 +139,27 @@ def try_scrape_for_pdf(url: str) -> bytes | None:
     return None
 
 
+def _is_pdf_bytes(data: bytes | None) -> bool:
+    # Servers label HTML error pages as octet-stream too; trust only the signature.
+    return bool(data) and data.lstrip()[:5] == b"%PDF-"
+
+
 def fetch_pdf(doi: str, url: str) -> tuple[bytes | None, str]:
     if url:
         pdf = try_direct_url(url)
-        if pdf:
+        if _is_pdf_bytes(pdf):
             return pdf, "direct_url"
     if doi:
         pdf = try_unpaywall(doi)
-        if pdf:
+        if _is_pdf_bytes(pdf):
             return pdf, "unpaywall"
     if doi:
         pdf = try_scrape_for_pdf(f"https://doi.org/{doi}")
-        if pdf:
+        if _is_pdf_bytes(pdf):
             return pdf, "doi_scrape"
     if url and not _is_pdf_url(url):
         pdf = try_scrape_for_pdf(url)
-        if pdf:
+        if _is_pdf_bytes(pdf):
             return pdf, "url_scrape"
     return None, "failed"
 

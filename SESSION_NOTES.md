@@ -9,7 +9,7 @@
 - Unpaywall contact email now comes from `UNPAYWALL_EMAIL` in `.env` (was `research@example.com`);
   unset means Unpaywall is skipped with one warning. Added to `.env.example`.
 - `cli.py`: console logging no longer crashes on titles a cp1252 console can't print (e.g. λ).
-- New `tests/test_downloads.py` (6 tests). Installed bs4 directly, not via reinstall, to avoid the exe lock.
+- New `tests/test_downloads.py` (8 tests). Downloads must now start with the `%PDF-` signature, so an HTML error page labelled octet-stream is never attached. Installed bs4 directly, not via reinstall, to avoid the exe lock.
 
 **Why**
 - Reuse the August-verified attach path rather than fix a second copy of it.
