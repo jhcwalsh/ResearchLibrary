@@ -8,15 +8,18 @@ Strategies tried (in order):
   3. DOI landing page scrape — follows doi.org redirect and looks for a PDF link
   4. Original URL scrape — fetches the URL and looks for a PDF link
 """
+import logging
+import os
 import re
 import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from .zotero_client import get_client, get_attachment_key, get_all_papers
+from .zotero_client import attach_pdf, get_client, get_attachment_key, get_all_papers
 
-UNPAYWALL_EMAIL = "research@example.com"
+log = logging.getLogger(__name__)
+
 REQUEST_TIMEOUT = 20
 RETRY_DELAY = 1.0
 HEADERS = {
@@ -74,12 +77,23 @@ def try_direct_url(url: str) -> bytes | None:
     return None
 
 
+_warned_no_email = False
+
+
 def try_unpaywall(doi: str) -> bytes | None:
+    """Unpaywall requires a real contact email, so it is skipped without one."""
+    global _warned_no_email
     requests, _ = _lazy_imports()
     if not doi:
         return None
+    email = os.getenv("UNPAYWALL_EMAIL", "").strip()
+    if not email:
+        if not _warned_no_email:
+            log.warning("UNPAYWALL_EMAIL not set in .env - skipping Unpaywall lookups")
+            _warned_no_email = True
+        return None
     doi = doi.strip()
-    api_url = f"https://api.unpaywall.org/v2/{doi}?email={UNPAYWALL_EMAIL}"
+    api_url = f"https://api.unpaywall.org/v2/{doi}?email={email}"
     try:
         r = requests.get(api_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         if not r.ok:
@@ -146,19 +160,23 @@ def fetch_pdf(doi: str, url: str) -> tuple[bytes | None, str]:
 
 
 def attach_pdf_to_item(zot, parent_key: str, title: str, pdf_bytes: bytes) -> bool:
-    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)[:80]
-    with tempfile.NamedTemporaryFile(suffix=".pdf", prefix=safe_title + "_", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = Path(tmp.name)
-    try:
-        result = zot.attachment_simple([str(tmp_path)], parentid=parent_key)
-        if result.get("successful"):
-            return True
+    """Upload via zotero_client.attach_pdf, which Zotero accepts (see its docstring).
+
+    `zot` is unused and kept for call compatibility.
+    """
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title).strip()[:80] or "paper"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir) / f"{safe_title}.pdf"
+        tmp_path.write_bytes(pdf_bytes)
+        try:
+            result = attach_pdf(parent_key, str(tmp_path))
+        except Exception as e:
+            log.warning(f"attach failed for {parent_key}: {e}")
+            return False
+    if result.get("error"):
+        log.warning(f"Zotero rejected attachment for {parent_key}: {result}")
         return False
-    except Exception:
-        return False
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    return True
 
 
 def download_missing(dry_run: bool = True, limit: int | None = None,

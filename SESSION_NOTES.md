@@ -1,5 +1,23 @@
 # Session notes
 
+## 2026-10-15 (later) — PDF downloader fixed
+
+**Done**
+- `research-admin download` dry run: 192 papers have a DOI/URL but no PDF (59 with a DOI, 123 URL only).
+- `downloads.py`: uploads now go through `zotero_client.attach_pdf`. The old `attachment_simple` call
+  sends the full path as the filename, which Zotero rejects, so every upload would have failed.
+- Unpaywall contact email now comes from `UNPAYWALL_EMAIL` in `.env` (was `research@example.com`);
+  unset means Unpaywall is skipped with one warning. Added to `.env.example`.
+- `cli.py`: console logging no longer crashes on titles a cp1252 console can't print (e.g. λ).
+- New `tests/test_downloads.py` (6 tests). Installed bs4 directly, not via reinstall, to avoid the exe lock.
+
+**Why**
+- Reuse the August-verified attach path rather than fix a second copy of it.
+
+**Broken / unsure**
+- PDFs uploaded through the API have no full text until Zotero desktop syncs and indexes them.
+  Embeddings use title + abstract only, so they are unaffected.
+
 ## 2026-10-15 — Progress review, index refresh committed
 
 **Done**

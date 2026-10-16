@@ -28,6 +28,10 @@ LOG_PATH = INDEX_CACHE_PATH.parent / "refresh_log.txt"
 
 def _setup_logging() -> logging.Logger:
     INDEX_CACHE_PATH.parent.mkdir(exist_ok=True)
+    # Paper titles carry Greek letters and the like; a cp1252 Windows console
+    # can't encode them, so show a "?" there. The log file keeps them (UTF-8).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(message)s",
