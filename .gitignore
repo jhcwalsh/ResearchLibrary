@@ -10,8 +10,3 @@ venv/
 *.iml
 .cache/
 .claude/
-test_connection.py
-test_full_index.py
-test_fulltext.py
-test_fulltext2.py
-test_index.py

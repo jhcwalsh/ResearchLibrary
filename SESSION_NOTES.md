@@ -14,14 +14,16 @@
   817 Zotero items both cached and live, and `embeddings.npz` holds 733 papers / 19 categories,
   all built together at 13 Oct 22:36. So no rebuild was needed.
 
+- Later: reinstalled the package so `research-admin` works, and deleted the five dead root
+  `test_*.py` scratch scripts (untracked) plus their `.gitignore` lines.
+
 **Broken / unsure**
-- The `research-admin` console script is not in `.venv/Scripts`; use
-  `python -m research_library.cli <command>` until the package is reinstalled (`pip install -e .`).
-- Root-level `test_*.py` scripts from April are gitignored scratch files and not run by pytest. Probably dead.
+- `research-admin.exe` had never been written because Claude Desktop runs `research-library.exe`
+  as an MCP server, and Windows locks a running exe, so pip aborted halfway. **Quit Claude Desktop
+  before any `pip install -e .`** or the install half-uninstalls and leaves a `~esearch_library` folder.
 - This repo has no `.claude/hooks/require-session-notes.sh`, so the notes rule is not enforced here.
 
 **Next**
-- Reinstall the package so `research-admin` works again, then delete the dead root test scripts.
 - 450 of 733 papers still link to Scholar rather than a DOI/URL; `research-admin download` (dry-run) shows what PDFs could be fetched.
 
 ## History
