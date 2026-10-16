@@ -11,6 +11,9 @@
 - `cli.py`: console logging no longer crashes on titles a cp1252 console can't print (e.g. λ).
 - New `tests/test_downloads.py` (8 tests). Downloads must now start with the `%PDF-` signature, so an HTML error page labelled octet-stream is never attached. Installed bs4 directly, not via reinstall, to avoid the exe lock.
 
+- Real run: **25 of 192 PDFs attached** (11 Unpaywall, 10 page scrape, 3 direct, 1 DOI page),
+  167 found no PDF, 0 rejected by Zotero. Spot-checked two in Zotero: named files with md5, so stored.
+
 **Why**
 - Reuse the August-verified attach path rather than fix a second copy of it.
 
@@ -42,7 +45,7 @@
 - This repo has no `.claude/hooks/require-session-notes.sh`, so the notes rule is not enforced here.
 
 **Next**
-- 450 of 733 papers still link to Scholar rather than a DOI/URL; `research-admin download` (dry-run) shows what PDFs could be fetched.
+- The 167 papers with no free PDF are mostly paywalled or book summaries; attach those by hand in Zotero if wanted.
 
 ## History
 
