@@ -1,5 +1,23 @@
 # Session notes
 
+## 2026-10-16 — Switched to Claude Haiku 5.5 / Sonnet 5.5
+
+**Done**
+- All 7 Claude calls moved from Haiku 4.5 / Sonnet 4.6 to `claude-haiku-5-5` / `claude-sonnet-5-5`
+  (`app.py`, `analysis.py`, `tools.py`). New `src/research_library/llm.py` holds the IDs and `response_text()`.
+- Effort set explicitly: low for keywords, category rescue and summaries; medium for categorising,
+  subcategories and answers. Small `max_tokens` caps (50, 300, 512, 1024) raised to leave room for thinking.
+- New `tests/test_llm.py`; the `ask_library` test mocks now return a thinking block first. 124 tests pass.
+  One live call to each model checked out.
+
+**Why**
+- The 5.5 models think by default, so every `content[0].text` read would have hit an empty thinking block.
+- Refusals now raise a clear `RefusalError` instead of a confusing empty answer.
+
+**Broken / unsure**
+- No server-side refusal fallback for the Sonnet calls: SDK 0.101 has no `fallbacks` parameter (needs 1.x).
+- Categorisation quality on the new models is untested until the next `research-admin refresh --force`.
+
 ## 2026-10-15 (later) — PDF downloader fixed
 
 **Done**

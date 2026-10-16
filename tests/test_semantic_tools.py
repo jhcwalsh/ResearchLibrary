@@ -143,12 +143,22 @@ class TestAskLibrary:
                 {"key": "K2", "score": 0.85, "category": "Regime Switching"},
             ],
         }
+        # Shaped like a Sonnet 5.5 reply: an (empty) thinking block comes first.
         fake_msg = SimpleNamespace(
-            content=[SimpleNamespace(text="HMM models dominate [K1]; thresholds complement [K2].")]
+            content=[
+                SimpleNamespace(type="thinking", thinking="", signature="sig"),
+                SimpleNamespace(type="text", text="HMM models dominate [K1]; thresholds complement [K2]."),
+            ],
+            stop_reason="end_turn",
+            stop_details=None,
         )
-        fake_client = SimpleNamespace(
-            messages=SimpleNamespace(create=lambda **_: fake_msg)
-        )
+        sent = {}
+
+        def create(**kwargs):
+            sent.update(kwargs)
+            return fake_msg
+
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=create))
 
         with patch("research_library.embeddings.search_by_category", return_value=ranking), \
              patch("anthropic.Anthropic", return_value=fake_client):
@@ -158,6 +168,8 @@ class TestAskLibrary:
         data = json.loads(result[0].text)
         assert "HMM models dominate [K1]" in data["answer"]
         assert data["categories_consulted"][0]["name"] == "Regime Switching"
+        assert sent["model"] == "claude-sonnet-5-5"
+        assert sent["output_config"] == {"effort": "medium"}
         assert {p["key"] for p in data["papers_consulted"]} == {"K1", "K2"}
         assert data["used_fulltext_for"] == []
 
@@ -190,7 +202,8 @@ class TestAskLibrary:
 
         def fake_create(**kwargs):
             captured["prompt"] = kwargs["messages"][0]["content"]
-            return SimpleNamespace(content=[SimpleNamespace(text="answer [K4]")])
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="answer [K4]")],
+                                   stop_reason="end_turn", stop_details=None)
 
         fake_client = SimpleNamespace(messages=SimpleNamespace(create=fake_create))
 

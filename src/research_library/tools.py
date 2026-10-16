@@ -2,6 +2,7 @@ import json
 import mcp.types as types
 from . import zotero_client as zc
 from .analysis import CACHE_PATH as INDEX_CACHE_PATH
+from .llm import SONNET, response_text
 
 
 TOOLS: list[types.Tool] = [
@@ -625,11 +626,12 @@ async def _handle_ask_library(arguments: dict) -> list[types.TextContent]:
 
     client = anthropic.Anthropic()
     response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
+        model=SONNET,
+        max_tokens=8000,  # room for thinking as well as the answer
+        output_config={"effort": "medium"},
         messages=[{"role": "user", "content": prompt}],
     )
-    answer = response.content[0].text
+    answer = response_text(response)
 
     payload = {
         "answer": answer,

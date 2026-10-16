@@ -10,6 +10,8 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
+from .llm import HAIKU, SONNET, response_text
+
 load_dotenv(override=True)
 
 CACHE_PATH = Path(__file__).parent.parent.parent / ".cache" / "library_index.json"
@@ -95,12 +97,13 @@ Papers:
 {listing}"""
 
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=HAIKU,
         max_tokens=16000,
+        output_config={"effort": "medium"},
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.content[0].text.strip()
+    raw = response_text(response).strip()
     # Strip markdown fences if present
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
@@ -138,11 +141,12 @@ Categories:
 Papers:
 {straggler_lines}"""
         rescue_response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
+            model=HAIKU,
+            max_tokens=4000,  # room for thinking as well as the JSON
+            output_config={"effort": "low"},
             messages=[{"role": "user", "content": rescue_prompt}],
         )
-        rescue_raw = rescue_response.content[0].text.strip()
+        rescue_raw = response_text(rescue_response).strip()
         if rescue_raw.startswith("```"):
             rescue_raw = re.sub(r"^```[a-z]*\n?", "", rescue_raw)
             rescue_raw = re.sub(r"\n?```$", "", rescue_raw)
@@ -195,12 +199,13 @@ Papers:
 {chr(10).join(lines)}"""
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=8000,
+        model=SONNET,
+        max_tokens=16000,
+        output_config={"effort": "medium"},
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.content[0].text.strip()
+    raw = response_text(response).strip()
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
@@ -253,11 +258,12 @@ Papers:
 {listing}"""
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=300,
+        model=SONNET,
+        max_tokens=4000,  # room for thinking; the prompt keeps the summary to 2-3 sentences
+        output_config={"effort": "low"},
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text.strip()
+    return response_text(response).strip()
 
 
 # ── Full pipeline ─────────────────────────────────────────────────────────────

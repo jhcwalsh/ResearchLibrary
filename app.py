@@ -13,6 +13,7 @@ from src.research_library.zotero_client import (
     get_fulltext, get_fulltext_batch, extract_pdf_text, PYMUPDF_AVAILABLE,
 )
 from src.research_library.analysis import build_index, load_cached_index
+from src.research_library.llm import HAIKU, SONNET, response_text
 
 def load_subcategories(cached_index: dict) -> dict:
     """Extract {category: {subcategory: [keys]}} from the cached index."""
@@ -40,14 +41,15 @@ def format_paper(p):
 def extract_keywords(query):
     client = anthropic.Anthropic()
     msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=50,
+        model=HAIKU,
+        max_tokens=2000,  # thinking counts toward this; 50 could leave no room for the keywords
+        output_config={"effort": "low"},
         messages=[{
             "role": "user",
             "content": f"Extract 2-4 search keywords from this query for a Zotero academic library search. Return only the keywords, space-separated, nothing else: {query}"
         }]
     )
-    return msg.content[0].text.strip()
+    return response_text(msg).strip()
 
 
 def ask_claude(question, papers, use_fulltext=False):
@@ -72,14 +74,15 @@ def ask_claude(question, papers, use_fulltext=False):
 
     context = "\n\n---\n\n".join(parts)
     with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
+        model=SONNET,
+        max_tokens=8000,  # room for thinking as well as the answer
+        output_config={"effort": "medium"},
         messages=[{
             "role": "user",
             "content": f"Based on these papers from my Zotero library, answer this question: {question}\n\nPapers:\n{context}"
         }]
     ) as stream:
-        return stream.get_final_text()
+        return response_text(stream.get_final_message())
 
 
 def paper_expander(p):
