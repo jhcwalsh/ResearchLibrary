@@ -12,6 +12,7 @@
 - Task 2: `discovery/store.py` holds follow settings (all topics minus `unfollowed`), digests, the ledger (pending/kept/dismissed/expired), the pending inbox and 14-day expiry. `tests/test_discovery_store.py`.
 - Task 3: `discovery/sources.py` parses arXiv Atom, the SSRN listing feed and OpenAlex works into one candidate shape; fixtures under `tests/fixtures/`.
 - Task 4: fetchers for arXiv (q-fin firehose plus one keyword query per topic), SSRN (paged newest-first to the window edge) and OpenAlex, behind one `_http_get` seam; `merge_candidates` and `drop_owned`.
+- Task 5: `discovery/scoring.py` embeds candidates with voyage-finance-2, assigns each to the followed topic with the best per-topic fit (mean of its 3 nearest papers in that topic), and picks a shortlist with floors, a per-topic cap and round-robin filling.
 **Why**
 - James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
   Claude Desktop, with kept papers folded into Zotero and the cached index.
