@@ -381,9 +381,10 @@ def _page_meta(html_text: str) -> dict[str, list[str]]:
 def _lookup_page(url: str) -> dict:
     meta = _page_meta(_http_get(url).decode("utf-8", "replace"))
     first = lambda *names: next((meta[n][0] for n in names if meta.get(n)), "")  # noqa: E731
-    doi = _normalize_doi(first("citation_doi", "dc.identifier"))
+    doi_match = _DOI_RE.search(first("citation_doi", "dc.identifier"))  # tolerates a "doi:" prefix
+    doi = _normalize_doi(doi_match.group(1)) if doi_match else ""
     cand = None
-    if doi and _DOI_RE.match(doi):
+    if doi:
         try:
             cand = _lookup_doi(doi)
         except LookupError:

@@ -80,3 +80,19 @@ def test_dry_run_writes_nothing_and_skips_summaries(tmp_path, monkeypatch):
                        embed=lambda texts: np.array([[1, 0, 0, 0]] * len(texts), dtype=np.float32), fetchers=fetchers)
     assert out["shown"] == 1 and out["digest"] is None and out["selected"][0]["title"] == "New A"
     assert not root.exists() or not list(root.glob("*.json"))
+
+
+def test_discover_does_not_overwrite_follow_changes_made_during_the_run(tmp_path, monkeypatch):
+    ip, library = _setup(tmp_path)
+    root = tmp_path / "disc"
+    monkeypatch.setattr(run.summaries, "ensure_queries", lambda *a, **k: {"Big": ["q"], "Small": ["q"]})
+
+    def arxiv_that_unfollows(**kw):  # Desktop changes the follow file while the run is fetching
+        store.save_follow({**store.load_follow(root), "unfollowed": ["Small"]}, root)
+        return []
+
+    fetchers = {"arxiv": arxiv_that_unfollows, "ssrn": lambda **kw: [], "openalex": lambda **kw: []}
+    run.discover(progress=lambda m: None, client=object(), now=datetime(2026, 10, 16, 6, 30), root=root,
+                 index_path=ip, library=library, embed=lambda texts: np.zeros((len(texts), 4), dtype=np.float32), fetchers=fetchers)
+    f = store.load_follow(root)
+    assert f["unfollowed"] == ["Small"] and f["last_run"] == "2026-10-16T06:30:00"

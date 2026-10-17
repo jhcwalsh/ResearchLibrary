@@ -68,3 +68,10 @@ def test_select_ranks_within_a_topic_by_margin_over_each_floor():
         {"id": "low", "topic": "PE", "fit": 0.77, "abstract": ""},      # margin 0.01, cut by per_topic
     ]
     assert [c["id"] for c in scoring.select_candidates(cands, follow)] == ["arxiv", "ssrn"]
+
+
+def test_score_stores_vectors_rounded_to_six_decimals():
+    cands = [_c("x")]
+    vecs = np.array([[0.1234567891, 0.987654321, 0, 0]], dtype=np.float32)
+    scoring.score_candidates(cands, vecs, _lib(), followed=["Big"])
+    assert all(abs(x - round(x, 6)) < 1e-12 for x in cands[0]["vector"])

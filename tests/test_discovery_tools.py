@@ -78,3 +78,13 @@ def test_tools_are_registered():
     names = {t.name for t in tools.TOOLS}
     assert {"get_new_papers", "keep_new_papers", "dismiss_new_papers", "consider_paper", "get_followed_topics", "set_followed_topics"} <= names
     assert "WRITE TOOL" in next(t for t in tools.TOOLS if t.name == "keep_new_papers").description
+
+
+def _raise(exc):
+    raise exc
+
+
+async def test_consider_paper_reports_fetch_failures_in_a_sentence(disc, monkeypatch):
+    monkeypatch.setattr(handlers.keep, "consider_reference", lambda ref, **kw: _raise(RuntimeError("HTTP 403 Forbidden")))
+    out = (await tools.handle_tool("consider_paper", {"reference": "https://example.org/x"}))[0].text
+    assert out.startswith("Could not") and "403" in out and "Traceback" not in out

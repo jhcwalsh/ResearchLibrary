@@ -36,7 +36,7 @@ def score_candidates(cands: list[dict], vectors: np.ndarray, library: dict, foll
         top = np.argsort(-row)[:3]
         cand["nearest"] = [{"key": library["keys"][j], "score": round(float(row[j]), 4), "category": str(cats[j])}
                            for j in top]
-        cand["vector"] = [float(x) for x in vectors[i]]
+        cand["vector"] = [round(float(x), 6) for x in vectors[i]]  # 6 dp keeps digests small
         best_topic, best_fit = None, -1.0
         for topic, idx in topic_cols.items():
             fit = float(np.sort(row[idx])[-3:].mean())

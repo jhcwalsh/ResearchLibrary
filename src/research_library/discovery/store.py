@@ -11,6 +11,7 @@ seen.json        ledger {candidate id: {status, date, digest, title, zotero_key}
 """
 import hashlib
 import json
+import os
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -44,9 +45,21 @@ def _read_json(path: Path, default):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, data) -> None:
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write to a sibling temp file and rename, so a crash never leaves a half-written file."""
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    try:
+        os.replace(tmp, path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _write_json(path: Path, data) -> None:
+    atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _now() -> str:
@@ -77,7 +90,9 @@ def load_follow(root: Path | None = None) -> dict:
 
 
 def save_follow(follow: dict, root: Path | None = None) -> None:
-    _write_json(_root(root) / "follow.json", follow)
+    """Persist only what differs from DEFAULTS, so a later change to a default takes effect."""
+    explicit = {k: v for k, v in follow.items() if k not in DEFAULTS or v != DEFAULTS[k]}
+    _write_json(_root(root) / "follow.json", explicit)
 
 
 def followed_topics(follow: dict, index_topics: list[str]) -> list[str]:
@@ -96,13 +111,16 @@ def save_ledger(ledger: dict, root: Path | None = None) -> None:
     _write_json(_root(root) / "seen.json", ledger)
 
 
-def set_status(cand_id: str, status: str, root: Path | None = None, zotero_key: str | None = None) -> None:
+def set_status(cand_id: str, status: str, root: Path | None = None, zotero_key: str | None = None,
+               digest: str | None = None) -> None:
     ledger = load_ledger(root)
     entry = ledger.setdefault(cand_id, {"title": "", "digest": None, "zotero_key": None})
     entry["status"] = status
     entry["date"] = _now()
     if zotero_key:
         entry["zotero_key"] = zotero_key
+    if digest:
+        entry["digest"] = digest
     save_ledger(ledger, root)
 
 
@@ -167,11 +185,13 @@ def _candidates_in(digest: dict) -> list[dict]:
 def pending_candidates(root: Path | None = None) -> list[dict]:
     """Candidates still awaiting a decision, newest digest first."""
     ledger = load_ledger(root)
-    pending_ids = {cid for cid, e in ledger.items() if e.get("status") == "pending"}
+    pending = {cid: e for cid, e in ledger.items() if e.get("status") == "pending"}
+    dates = sorted({e["digest"] for e in pending.values() if e.get("digest")}, reverse=True)
     out = []
-    for date_str in digest_dates(root):
+    for date_str in dates:  # only the digests that still hold something pending
         digest = load_digest(date_str, root) or {}
-        out.extend(c for c in _candidates_in(digest) if c["id"] in pending_ids)
+        out.extend(c for c in _candidates_in(digest)
+                   if c["id"] in pending and pending[c["id"]].get("digest") == date_str)
     return out
 
 

@@ -17,6 +17,7 @@
 - First real run: 297 fetched, 292 new, 15 shown across 10 topics. The inbox renders through `get_new_papers`
   and the cards read well. Scheduled task "ResearchLibrary Discover" runs daily at 06:30 and catches up after sleep.
 
+- Review fix pass (fresh reviewer, no critical findings): keep marks the ledger right after the Zotero write and survives index or embedding failures, so a retry never double-files; consider_paper answers in a sentence on any failure, strips a `doi:` prefix from page meta tags, and puts a previously dismissed paper back in the inbox; the inbox reads only digests with pending entries and vectors are stored at 6 dp; follow.json persists only explicit settings and is re-read before the run saves it; all JSON and npz writes are atomic. 183 tests pass.
 **Why**
 - James wants the library to feed itself: a daily digest he approves from Claude Desktop, with kept papers
   folded into Zotero and the cached index without a paid rebuild.

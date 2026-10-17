@@ -146,6 +146,9 @@ def discover(days: int | None = None, force_queries: bool = False, dry_run: bool
     store.record_pending(digest, root)
     result["digest"] = today
     result["expired"] = store.expire_pending(now.date(), EXPIRE_DAYS, root)
-    follow["last_run"] = now.isoformat(timespec="seconds")
-    store.save_follow(follow, root)
+    # Re-read before saving: Desktop may have changed follow settings while we were fetching.
+    latest = store.load_follow(root)
+    latest["queries"] = follow.get("queries", {})
+    latest["last_run"] = now.isoformat(timespec="seconds")
+    store.save_follow(latest, root)
     return result

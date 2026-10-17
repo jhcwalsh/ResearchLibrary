@@ -56,6 +56,8 @@ def _consider(reference: str) -> str:
         cand = keep.consider_reference(reference)
     except LookupError as exc:
         return str(exc)
+    except Exception as exc:  # a dead page, a stalled API, a missing cache: one sentence, not a traceback
+        return f"Could not look that reference up: {type(exc).__name__}: {exc}"
     if cand.get("owned"):
         key = f" (Zotero {cand['zotero_key']})" if cand.get("zotero_key") else ""
         return f"Already in the library: {cand.get('title', '')}{key}"

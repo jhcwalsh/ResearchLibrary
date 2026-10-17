@@ -6,6 +6,7 @@ page see it without a rebuild. The topic's summary caption on the Contents page
 will say it predates the latest papers until `research-admin contents` runs.
 """
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -18,38 +19,60 @@ from . import run, scoring, sources, store, summaries
 
 # ── Index and embedding updates ───────────────────────────────────────────────
 
-def append_to_index(paper: dict, topic: str, index_path: Path | None = None) -> bool:
-    """Put a kept paper at the front of its topic in library_index.json. False if the topic is gone."""
+def append_to_index(paper: dict, topic: str, index_path: Path | None = None) -> str:
+    """Put a kept paper at the front of its topic in library_index.json.
+
+    Returns "updated", "exists" (key already there), "topic_missing" or "no_index".
+    """
     path = Path(index_path) if index_path else INDEX_CACHE_PATH
     if not path.exists():
-        return False
+        return "no_index"
     index = json.loads(path.read_text(encoding="utf-8"))
     cat = index.get("categories", {}).get(topic)
     if cat is None:
-        return False
+        return "topic_missing"
+    if any(p.get("key") == paper.get("key") for c in index["categories"].values() for p in c.get("papers", [])):
+        return "exists"
     record = {k: paper.get(k, "") for k in ("key", "title", "authors", "year", "abstract", "doi", "url")}
     cat["papers"].insert(0, record)
     index["unique_papers"] = int(index.get("unique_papers", 0)) + 1
-    path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-    return True
+    store.atomic_write_text(path, json.dumps(index, indent=2))
+    return "updated"
 
 
 def append_embedding(key: str, vector: list[float], topic: str, emb_path: Path | None = None) -> bool:
-    """Append one paper vector to embeddings.npz. False if the file is missing."""
+    """Append one paper vector to embeddings.npz. False if the file is missing or the vector empty."""
     path = Path(emb_path) if emb_path else embeddings.EMBEDDINGS_PATH
     if not path.exists() or not vector:
         return False
-    data = np.load(path, allow_pickle=False)
+    with np.load(path, allow_pickle=False) as data:
+        arrays = {name: data[name] for name in ("keys", "vectors", "paper_cats", "cat_names", "cat_vectors")}
+    if key in arrays["keys"].tolist():
+        return True
     row = np.asarray(vector, dtype=np.float32).reshape(1, -1)
+    tmp = path.with_name(path.stem + ".tmp.npz")
     np.savez(
-        path,
-        keys=np.append(data["keys"], key),
-        vectors=np.vstack([data["vectors"].astype(np.float32), row]),
-        paper_cats=np.append(data["paper_cats"], topic),
-        cat_names=data["cat_names"],
-        cat_vectors=data["cat_vectors"],
+        tmp,
+        keys=np.append(arrays["keys"], key),
+        vectors=np.vstack([arrays["vectors"].astype(np.float32), row]),
+        paper_cats=np.append(arrays["paper_cats"], topic),
+        cat_names=arrays["cat_names"],
+        cat_vectors=arrays["cat_vectors"],
     )
+    os.replace(tmp, path)
     return True
+
+
+def _fold_into_index(cand: dict, key: str, index_path: Path | None, emb_path: Path | None) -> tuple[str, str]:
+    """Index and embedding update after the Zotero write; never raises."""
+    try:
+        outcome = append_to_index({**cand, "key": key}, cand.get("topic") or "", index_path)
+        if outcome in ("topic_missing", "no_index"):
+            return outcome, ""
+        has_vector = append_embedding(key, cand.get("vector") or [], cand.get("topic") or "", emb_path)
+        return ("updated" if has_vector else "updated_no_vector"), ""
+    except Exception as exc:
+        return "failed", f"index update failed: {exc}"
 
 
 # ── Keep ──────────────────────────────────────────────────────────────────────
@@ -123,6 +146,8 @@ def keep_candidates(ids: list[str], attach_pdf: bool = True, root: Path | None =
 
         key = created["key"]
         status = "already_owned" if created.get("duplicate") else "kept"
+        # The Zotero write is the irreversible step: record it before anything else can fail.
+        store.set_status(cid, "kept", root, zotero_key=key)
         pdf = "skipped"
         if attach_pdf:
             try:
@@ -134,15 +159,11 @@ def keep_candidates(ids: list[str], attach_pdf: bool = True, root: Path | None =
             except Exception:
                 pdf = "failed"
 
-        paper = {**cand, "key": key}
-        if append_to_index(paper, cand.get("topic") or "", index_path):
-            index_status = "updated"
-            append_embedding(key, cand.get("vector") or [], cand["topic"], emb_path)
-        else:
-            index_status = "topic_missing"
-        store.set_status(cid, "kept", root, zotero_key=key)
+        index_status, note = _fold_into_index(cand, key, index_path, emb_path)
+        messages = [m for m in (
+            "Already in Zotero (same DOI); folded into the index." if status == "already_owned" else "", note) if m]
         results.append(_result(cid, cand["title"], status, zotero_key=key, pdf=pdf, index=index_status,
-                               message="Already in Zotero (same DOI); folded into the index." if status == "already_owned" else ""))
+                               message=" ".join(messages)))
     return results
 
 
@@ -212,4 +233,6 @@ def consider_reference(reference: str, client=None, root: Path | None = None, in
     digest.setdefault("sent", []).append(cand)
     store.save_digest(digest, root)
     store.record_pending(digest, root)
+    if known:  # previously dismissed or expired: back into the inbox, pointing at today's copy
+        store.set_status(cand["id"], "pending", root, digest=today)
     return cand
