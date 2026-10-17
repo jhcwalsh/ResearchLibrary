@@ -5,6 +5,7 @@ Subcommands:
     embed     Recompute Voyage embeddings from the cached index
     links     Regenerate paper_index.md
     contents  Write cited topic summaries for the app's Contents page
+    discover  Find new arXiv and SSRN papers in followed topics and write the daily digest
     download  Attempt to fetch PDFs for items missing attachments
     all       Run refresh, embed, links, contents in order
 
@@ -158,6 +159,21 @@ def cmd_contents(args, log: logging.Logger) -> int:
     return 1 if result["failed"] else 0
 
 
+def cmd_discover(args, log: logging.Logger) -> int:
+    from .discovery import run as discovery_run
+    try:
+        result = discovery_run.discover(days=args.days, force_queries=args.force_queries,
+                                        dry_run=args.dry_run, progress=log.info)
+    except FileNotFoundError as e:
+        log.error(str(e))
+        return 1
+    fetched = ", ".join(f"{src} {n}" for src, n in result["fetched"].items())
+    topics = ", ".join(f"{t} {n}" for t, n in result["by_topic"].items()) or "none"
+    tail = "dry run, nothing written" if args.dry_run else f"{result['expired']} expired; digest {result['digest']}"
+    log.info(f"Discovery: fetched {fetched}; {result['new']} new; {result['shown']} shown ({topics}); {tail}")
+    return 0
+
+
 def cmd_download(args, log: logging.Logger) -> int:
     from .downloads import download_missing
     try:
@@ -210,6 +226,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_contents = sub.add_parser("contents", help="Write cited topic summaries for the Contents page")
     p_contents.add_argument("--force", action="store_true", help="Rewrite every topic, not just changed ones")
     p_contents.set_defaults(func=cmd_contents)
+
+    p_discover = sub.add_parser("discover", help="Find new arXiv and SSRN papers in followed topics and write the daily digest")
+    p_discover.add_argument("--days", type=int, default=None, help="Look back this many days instead of since the last run")
+    p_discover.add_argument("--force-queries", action="store_true", help="Rewrite the per-topic search phrases")
+    p_discover.add_argument("--dry-run", action="store_true", help="Fetch and score but write nothing and skip summaries")
+    p_discover.set_defaults(func=cmd_discover)
 
     p_download = sub.add_parser("download", help="Try to fetch missing PDFs from Zotero items")
     p_download.add_argument("--download", action="store_true", help="Actually attach PDFs (default is dry-run)")

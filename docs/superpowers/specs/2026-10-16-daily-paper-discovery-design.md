@@ -139,7 +139,8 @@ All under `.cache/discovery/`:
 - `seen.json`: ledger `{candidate id: {status, date, digest, title, zotero_key}}` with
   status `pending`, `kept`, `dismissed` or `expired`. Low-scoring candidates are not
   recorded; they drop out of the window naturally.
-- `discover.log`: run log.
+- Run log: the shared `.cache/refresh_log.txt` that every `research-admin` command writes to,
+  rather than a separate file.
 
 Candidate id is the first 12 hex characters of sha1 over the DOI if present, else the arXiv
 id, else the SSRN id, else the normalised title.
