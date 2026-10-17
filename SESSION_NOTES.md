@@ -14,6 +14,7 @@
 - Task 4: fetchers for arXiv (q-fin firehose plus one keyword query per topic), SSRN (paged newest-first to the window edge) and OpenAlex, behind one `_http_get` seam; `merge_candidates` and `drop_owned`.
 - Task 5: `discovery/scoring.py` embeds candidates with voyage-finance-2, assigns each to the followed topic with the best per-topic fit (mean of its 3 nearest papers in that topic), and picks a shortlist with floors, a per-topic cap and round-robin filling.
 - Task 6: `discovery/summaries.py`: Haiku writes 4-6 search phrases per topic (cached by topic fingerprint) and, per shortlisted candidate, a summary, why it fits, and a keep/maybe/skip call.
+- Task 7: `discovery/run.py` is the daily job: window from the last run (1-7 days), fetch all sources (a dead source is logged, not fatal), dedupe, score, shortlist, summarise (a failed summary leaves an honest card), write the digest, mark pending, expire after 14 days.
 **Why**
 - James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
   Claude Desktop, with kept papers folded into Zotero and the cached index.
