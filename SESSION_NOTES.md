@@ -1,5 +1,18 @@
 # Session notes
 
+## 2026-10-16 (later still) — Daily paper discovery (in progress)
+
+**Done**
+- Design and plan for daily paper discovery: `docs/superpowers/specs/2026-10-16-daily-paper-discovery-design.md`
+  and `docs/superpowers/plans/2026-10-16-daily-paper-discovery.md`. Probes showed OpenAlex has no recent SSRN
+  papers, SSRN's own listing feed (binding 203) does but without abstracts, and arXiv q-fin runs ~10 a day.
+- Task 1: `create_paper` / `_build_item_payload` accept `repository` and `archive_id` and build a valid
+  preprint payload (no journal fields). Tests in `tests/test_zotero_write.py`.
+
+**Why**
+- James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
+  Claude Desktop, with kept papers folded into Zotero and the cached index.
+
 ## 2026-10-16 (later) — Contents page with cited topic summaries
 
 **Done**

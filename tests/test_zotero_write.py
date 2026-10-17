@@ -459,3 +459,25 @@ class TestCreateCollection:
         with patch("research_library.zotero_client.get_client", return_value=mock_zot):
             result = create_collection("Macro")
         assert "error" in result
+
+
+# ── Unit: preprint payloads ───────────────────────────────────────────────────
+
+class TestPreprintPayload:
+    def test_preprint_uses_repository_and_archive_id(self):
+        p = _build_item_payload(item_type="preprint", title="T", authors=["Doe, Jane"], year="2026",
+                                doi="10.48550/arXiv.2610.00001", journal=None, volume=None, issue=None,
+                                pages=None, url="https://arxiv.org/abs/2610.00001", abstract="A",
+                                tags=["discovered"], collection_keys=None,
+                                repository="arXiv", archive_id="arXiv:2610.00001")
+        assert p["itemType"] == "preprint"
+        assert p["repository"] == "arXiv" and p["archiveID"] == "arXiv:2610.00001"
+        assert p["DOI"] == "10.48550/arXiv.2610.00001"
+        for field in ("publicationTitle", "volume", "issue", "pages"):
+            assert field not in p
+
+    def test_journal_article_payload_unchanged_by_new_kwargs(self):
+        p = _build_item_payload(item_type="journalArticle", title="T", authors=[], year=None, doi=None,
+                                journal="J", volume=None, issue=None, pages=None, url=None, abstract=None,
+                                tags=None, collection_keys=None)
+        assert p["publicationTitle"] == "J" and "repository" not in p

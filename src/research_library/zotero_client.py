@@ -336,9 +336,12 @@ def create_paper(
     tags: list[str] | None = None,
     collection_keys: list[str] | None = None,
     force: bool = False,
+    repository: str | None = None,
+    archive_id: str | None = None,
 ) -> dict:
     """Create a new paper. By default returns the existing item if a paper with
-    the same DOI is already in the library; pass force=True to override."""
+    the same DOI is already in the library; pass force=True to override.
+    `repository` and `archive_id` apply to preprints (e.g. "arXiv", "arXiv:2610.00001")."""
     if doi and not force:
         existing = find_by_doi(doi)
         if existing:
@@ -358,6 +361,8 @@ def create_paper(
         abstract=abstract,
         tags=tags,
         collection_keys=collection_keys,
+        repository=repository,
+        archive_id=archive_id,
     )
     zot = get_client()
     resp = zot.create_items([payload])
@@ -387,6 +392,8 @@ def _build_item_payload(
     abstract: str | None,
     tags: list[str] | None,
     collection_keys: list[str] | None,
+    repository: str | None = None,
+    archive_id: str | None = None,
 ) -> dict:
     """Build a Zotero create-items payload that uses fields valid for the item type."""
     payload: dict = {
@@ -406,7 +413,11 @@ def _build_item_payload(
         # Stash DOI in extra so it survives for book/thesis/report types
         payload["extra"] = f"DOI: {_normalize_doi(doi)}"
 
-    if item_type in _BOOK_LIKE_TYPES:
+    if item_type == "preprint":
+        # Preprints have no journal fields; Zotero rejects them. The venue is the repository.
+        payload["repository"] = repository or journal or ""
+        payload["archiveID"] = archive_id or ""
+    elif item_type in _BOOK_LIKE_TYPES:
         # For books, the `journal` kwarg holds the publisher name
         if journal:
             payload["publisher"] = journal
