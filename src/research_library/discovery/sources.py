@@ -5,11 +5,16 @@ Every source is parsed into the same candidate dict:
     abstract, doi, url, pdf_url, arxiv_id, ssrn_id, venue, extra
 with "" for missing text fields. `id` is set later by merge_candidates.
 """
+import json
 import re
+import time
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import date, datetime
+from urllib.parse import urlencode
 
+from ..analysis import _title_key
 from ..zotero_client import _normalize_doi
+from . import store
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 ARXIV = "{http://arxiv.org/schemas/atom}"
@@ -129,3 +134,159 @@ def parse_openalex_work(work: dict) -> dict:
     c["venue"] = ((loc.get("source") or {}).get("display_name")) or ""
     c["arxiv_id"] = arxiv_id_from_url(landing)
     return c
+
+
+# ── Fetching ──────────────────────────────────────────────────────────────────
+
+# SSRN's feed answers browser-like agents; a bare library string risks a 403.
+USER_AGENT = "Mozilla/5.0 (compatible; research-library/0.1; +https://github.com/jhcwalsh)"
+ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_FIREHOSE = "cat:q-fin.*"
+ARXIV_KEYWORD_CATS = "(cat:q-fin.* OR cat:econ.* OR cat:stat.ML OR cat:cs.LG)"
+SSRN_URL = "https://api.ssrn.com/content/v1/bindings/{binding}/papers?index={index}&count={count}&sort=0"
+OPENALEX_WORKS = "https://api.openalex.org/works"
+OPENALEX_SELECT = "id,doi,title,publication_date,primary_location,type,authorships,abstract_inverted_index,open_access"
+
+
+def _http_get(url: str, headers: dict | None = None, timeout: int = 30) -> bytes:
+    """The one place network requests happen; tests replace it."""
+    import requests
+    base = {"User-Agent": USER_AGENT, "Accept": "application/json, application/atom+xml, text/html;q=0.9, */*;q=0.8"}
+    resp = requests.get(url, headers={**base, **(headers or {})}, timeout=timeout)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _arxiv_stamp(dt: datetime) -> str:
+    return dt.strftime("%Y%m%d%H%M")
+
+
+def arxiv_query_url(search_query: str, start: int, max_results: int) -> str:
+    params = {"search_query": search_query, "start": start, "max_results": max_results,
+              "sortBy": "submittedDate", "sortOrder": "descending"}
+    return ARXIV_API + "?" + urlencode(params, safe=':*[]()')
+
+
+def fetch_arxiv(window_from: datetime, window_to: datetime, topic_queries: dict[str, list[str]],
+                pause: float = 3.0, sleep=time.sleep) -> list[dict]:
+    """Everything in q-fin for the window, plus one keyword search per topic in the wider categories."""
+    date_clause = f"submittedDate:[{_arxiv_stamp(window_from)} TO {_arxiv_stamp(window_to)}]"
+    out: list[dict] = []
+    start, page_size = 0, 200
+    while True:
+        page = parse_arxiv_atom(_http_get(arxiv_query_url(f"{ARXIV_FIREHOSE} AND {date_clause}", start, page_size)).decode("utf-8"))
+        out.extend(page)
+        if len(page) < page_size:
+            break
+        start += page_size
+        sleep(pause)
+    for topic, queries in topic_queries.items():
+        phrases = " OR ".join(f'all:"{q}"' for q in queries if q.strip())
+        if not phrases:
+            continue
+        sleep(pause)
+        query = f"{ARXIV_KEYWORD_CATS} AND ({phrases}) AND {date_clause}"
+        out.extend(parse_arxiv_atom(_http_get(arxiv_query_url(query, 0, 100)).decode("utf-8")))
+    return out
+
+
+def fetch_ssrn(bindings: list[int], since: date, max_pages: int = 5, sleep=time.sleep) -> list[dict]:
+    """Newest-first pages of each binding until the approved date falls before `since`."""
+    since_iso = since.isoformat()
+    out: list[dict] = []
+    count = 200
+    for binding in bindings:
+        index = 0
+        for page_no in range(max_pages):
+            if page_no:
+                sleep(1.0)
+            data = json.loads(_http_get(SSRN_URL.format(binding=binding, index=index, count=count)))
+            page = parse_ssrn_page(data)
+            out.extend(c for c in page if c["published"] >= since_iso)
+            raw = data.get("papers") or []
+            if len(raw) < count or (page and page[-1]["published"] < since_iso):
+                break
+            index += count
+    return out
+
+
+def fetch_openalex(topic_queries: dict[str, list[str]], since: date, mailto: str) -> list[dict]:
+    """One keyword search per topic over titles and abstracts published since `since`."""
+    out: list[dict] = []
+    for topic, queries in topic_queries.items():
+        phrases = " OR ".join(f'"{q}"' for q in queries if q.strip())
+        if not phrases:
+            continue
+        params = {"filter": f"title_and_abstract.search:({phrases}),from_publication_date:{since.isoformat()}",
+                  "per_page": 50, "select": OPENALEX_SELECT, "mailto": mailto}
+        data = json.loads(_http_get(OPENALEX_WORKS + "?" + urlencode(params)))
+        out.extend(parse_openalex_work(w) for w in data.get("results") or [])
+    return out
+
+
+# ── Merging and the owned check ───────────────────────────────────────────────
+
+def _match_keys(c: dict) -> list[str]:
+    keys = []
+    doi = _normalize_doi(c.get("doi") or "").lower()
+    if doi:
+        keys.append("doi:" + doi)
+    if c.get("arxiv_id"):
+        keys.append("arxiv:" + c["arxiv_id"])
+    if c.get("ssrn_id"):
+        keys.append("ssrn:" + str(c["ssrn_id"]))
+    tk = _title_key(c.get("title") or "")
+    if tk:
+        keys.append("title:" + tk)
+    return keys
+
+
+def _merge_two(a: dict, b: dict) -> dict:
+    """Keep the one with an abstract; fill its empty fields from the other."""
+    base, other = (a, b) if (a.get("abstract") or not b.get("abstract")) else (b, a)
+    merged = dict(base)
+    for k, v in other.items():
+        if k == "extra":
+            merged["extra"] = {**(other.get("extra") or {}), **(base.get("extra") or {})}
+        elif not merged.get(k) and v:
+            merged[k] = v
+    return merged
+
+
+def merge_candidates(cands: list[dict]) -> list[dict]:
+    """Collapse duplicates across sources by DOI, arXiv id, SSRN id and title; set ids."""
+    groups: list[dict] = []
+    by_key: dict[str, int] = {}
+    for c in cands:
+        keys = _match_keys(c)
+        gi = next((by_key[k] for k in keys if k in by_key), None)
+        if gi is None:
+            gi = len(groups)
+            groups.append(dict(c))
+        else:
+            groups[gi] = _merge_two(groups[gi], c)
+        for k in keys:
+            by_key[k] = gi
+    for g in groups:
+        g["id"] = store.candidate_id(g)
+    return groups
+
+
+def drop_owned(cands: list[dict], index: dict, ledger: dict) -> list[dict]:
+    """Remove papers the library already has (by DOI or title) or James has already seen."""
+    dois, titles = set(), set()
+    for cat in (index.get("categories") or {}).values():
+        for p in cat.get("papers") or []:
+            doi = _normalize_doi(p.get("doi") or "").lower()
+            if doi:
+                dois.add(doi)
+            tk = _title_key(p.get("title") or "")
+            if tk:
+                titles.add(tk)
+    out = []
+    for c in cands:
+        doi = _normalize_doi(c.get("doi") or "").lower()
+        if (doi and doi in dois) or _title_key(c.get("title") or "") in titles or c.get("id") in ledger:
+            continue
+        out.append(c)
+    return out
