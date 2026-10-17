@@ -16,6 +16,7 @@
 - Task 6: `discovery/summaries.py`: Haiku writes 4-6 search phrases per topic (cached by topic fingerprint) and, per shortlisted candidate, a summary, why it fits, and a keep/maybe/skip call.
 - Task 7: `discovery/run.py` is the daily job: window from the last run (1-7 days), fetch all sources (a dead source is logged, not fatal), dedupe, score, shortlist, summarise (a failed summary leaves an honest card), write the digest, mark pending, expire after 14 days.
 - Task 8: `discovery/keep.py`: keep files the paper in Zotero as a preprint (arXiv/SSRN) or article, tries for a PDF, appends it to the cached index and embeddings, marks the ledger; dismiss; consider a sent link (arXiv, DOI via OpenAlex then Crossref, SSRN feed, or page meta tags).
+- Task 9: six MCP tools in `tools.py` dispatching to `discovery/handlers.py`: get_new_papers (inbox or a dated digest), keep_new_papers, dismiss_new_papers, consider_paper, get/set_followed_topics; plain-text cards in `discovery/cards.py`.
 **Why**
 - James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
   Claude Desktop, with kept papers folded into Zotero and the cached index.

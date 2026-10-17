@@ -328,6 +328,84 @@ TOOLS: list[types.Tool] = [
             "required": ["name"],
         },
     ),
+    # ── Daily paper discovery ───────────────────────────────────────────────
+    types.Tool(
+        name="get_new_papers",
+        description=(
+            "The discovery inbox: new arXiv and SSRN papers the daily run found in the user's followed "
+            "topics and that are still awaiting a decision, grouped by topic. Each card has an id, a "
+            "summary (when the source carries an abstract), a fit score, the nearest papers the user "
+            "already owns, and a keep/maybe/skip recommendation. Pass a date (YYYY-MM-DD) to see one "
+            "day's digest as written. Present the cards faithfully and ask which to keep or dismiss."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {"date": {"type": "string", "description": "A digest date, YYYY-MM-DD. Omit for the inbox."}},
+        },
+    ),
+    types.Tool(
+        name="keep_new_papers",
+        description=(
+            "File discovery candidates in the user's Zotero library by id: creates the item (preprint for "
+            "arXiv/SSRN), tags it with its topic and 'discovered', tries to attach a PDF, and folds it into "
+            "the cached index and embeddings so semantic search sees it at once. WRITE TOOL: modifies the "
+            "user's Zotero library — confirm which ids the user wants before calling."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}, "description": "Candidate ids from get_new_papers."},
+                "attach_pdf": {"type": "boolean", "default": True, "description": "Try to download and attach the PDF."},
+            },
+            "required": ["ids"],
+        },
+    ),
+    types.Tool(
+        name="dismiss_new_papers",
+        description=(
+            "Mark discovery candidates as not wanted, by id or all pending at once. They will not be shown "
+            "again. WRITE TOOL (to the discovery ledger only, not Zotero): confirm before dismissing everything."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "all": {"type": "boolean", "default": False, "description": "Dismiss every pending candidate."},
+            },
+        },
+    ),
+    types.Tool(
+        name="consider_paper",
+        description=(
+            "Score and summarise one paper the user was sent, the way the daily run would: give a DOI, an "
+            "arXiv id or URL, an SSRN URL, or a paper's web page. It is added to today's inbox with an id so "
+            "keep_new_papers can file it. Reports if the library already has it."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {"reference": {"type": "string", "description": "DOI, arXiv id/URL, SSRN URL or page URL."}},
+            "required": ["reference"],
+        },
+    ),
+    types.Tool(
+        name="get_followed_topics",
+        description="Which of the library's topic areas the daily discovery run searches, with paper counts.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    types.Tool(
+        name="set_followed_topics",
+        description=(
+            "Follow or unfollow topic areas for daily discovery. Names must match list_categories exactly. "
+            "WRITE TOOL (to discovery settings only)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "follow": {"type": "array", "items": {"type": "string"}},
+                "unfollow": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+    ),
 ]
 
 
@@ -376,6 +454,11 @@ def _hydrate_paper(key: str, index: dict | None) -> dict | None:
 
 
 async def handle_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    from .discovery import handlers as discovery_handlers
+    discovery_text = discovery_handlers.handle(name, arguments)
+    if discovery_text is not None:
+        return _text(discovery_text)
+
     if name == "search_papers":
         results = zc.search_papers(arguments["query"], arguments.get("limit", 20))
         if not results:
