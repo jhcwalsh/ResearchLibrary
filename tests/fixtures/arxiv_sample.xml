@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <link href="http://arxiv.org/api/query?search_query=cat:q-fin.*" rel="self" type="application/atom+xml"/>
+  <title type="html">ArXiv Query: search_query=cat:q-fin.*</title>
+  <id>http://arxiv.org/api/abc</id>
+  <updated>2026-10-16T00:00:00-04:00</updated>
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>200</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2610.22144v1</id>
+    <updated>2026-10-15T16:15:47Z</updated>
+    <published>2026-10-15T16:15:47Z</published>
+    <title>Extending the Oracle Approximating Shrinkage to
+  General   Distributions</title>
+    <summary>  We extend the oracle approximating shrinkage estimator of the covariance
+matrix to general distributions and show that it improves minimum-variance
+portfolios out of sample.
+</summary>
+    <author>
+      <name>Ada Lovelace</name>
+    </author>
+    <author>
+      <name>Charles Babbage</name>
+    </author>
+    <arxiv:comment>24 pages</arxiv:comment>
+    <link href="http://arxiv.org/abs/2610.22144v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="https://arxiv.org/pdf/2610.22144v1" rel="related" type="application/pdf"/>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="q-fin.PM" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="q-fin.PM" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="stat.ML" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2610.00002v2</id>
+    <updated>2026-10-15T10:00:00Z</updated>
+    <published>2026-10-14T09:00:00Z</published>
+    <title>Deep Hedging with Transformers</title>
+    <summary>We train transformers to hedge options under transaction costs.</summary>
+    <author>
+      <name>Grace Hopper</name>
+    </author>
+    <arxiv:doi>10.1000/abc</arxiv:doi>
+    <link title="doi" href="http://dx.doi.org/10.1000/abc" rel="related"/>
+    <link href="http://arxiv.org/abs/2610.00002v2" rel="alternate" type="text/html"/>
+    <link title="pdf" href="https://arxiv.org/pdf/2610.00002v2" rel="related" type="application/pdf"/>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="q-fin.CP" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+</feed>

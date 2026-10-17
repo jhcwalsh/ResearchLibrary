@@ -10,6 +10,7 @@
   preprint payload (no journal fields). Tests in `tests/test_zotero_write.py`.
 
 - Task 2: `discovery/store.py` holds follow settings (all topics minus `unfollowed`), digests, the ledger (pending/kept/dismissed/expired), the pending inbox and 14-day expiry. `tests/test_discovery_store.py`.
+- Task 3: `discovery/sources.py` parses arXiv Atom, the SSRN listing feed and OpenAlex works into one candidate shape; fixtures under `tests/fixtures/`.
 **Why**
 - James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
   Claude Desktop, with kept papers folded into Zotero and the cached index.

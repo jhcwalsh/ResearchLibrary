@@ -1,0 +1,59 @@
+{
+  "total": 3,
+  "papers": [
+    {
+      "abstract_type": "Working Paper Series",
+      "publication_status": "UNDER REVIEW",
+      "is_paid": false,
+      "reference": "",
+      "page_count": 52,
+      "title": "The Rise of Private Debt Real Estate Funds: A Performance and Risk Analysis",
+      "authors": [
+        {"id": 1, "first_name": "Taylor", "last_name": "Nadauld", "url": "https://papers.ssrn.com/sol3/cf_dev/AbsByAuth.cfm?per_id=1"},
+        {"id": 2, "first_name": "Berk", "last_name": "Sensoy", "url": "https://papers.ssrn.com/sol3/cf_dev/AbsByAuth.cfm?per_id=2"}
+      ],
+      "affiliations": "Brigham Young University, Vanderbilt University",
+      "id": 7620718,
+      "is_approved": true,
+      "approved_date": "16 Oct 2026",
+      "downloads": 11,
+      "downloads_last_month": 11,
+      "downloads_this_year": 11,
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7620718"
+    },
+    {
+      "abstract_type": "Working Paper Series",
+      "publication_status": "UNDER REVIEW",
+      "is_paid": false,
+      "reference": "",
+      "page_count": 30,
+      "title": "An Older Paper",
+      "authors": [{"id": 3, "first_name": "Ann", "last_name": "Smith", "url": ""}],
+      "affiliations": "Somewhere",
+      "id": 7619999,
+      "is_approved": true,
+      "approved_date": "01 Oct 2026",
+      "downloads": 4,
+      "downloads_last_month": 4,
+      "downloads_this_year": 4,
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7619999"
+    },
+    {
+      "abstract_type": "Working Paper Series",
+      "publication_status": "UNDER REVIEW",
+      "is_paid": false,
+      "reference": "",
+      "page_count": 10,
+      "title": "No Date Paper",
+      "authors": [{"id": 4, "first_name": "Bob", "last_name": "Jones", "url": ""}],
+      "affiliations": "",
+      "id": 7610000,
+      "is_approved": true,
+      "approved_date": "",
+      "downloads": 0,
+      "downloads_last_month": 0,
+      "downloads_this_year": 0,
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7610000"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "meta": {"count": 2, "page": 1, "per_page": 50},
+  "results": [
+    {
+      "id": "https://openalex.org/W1",
+      "doi": "https://doi.org/10.2139/ssrn.1234",
+      "title": "Private Equity Cash Flows Under Stress",
+      "publication_date": "2026-10-14",
+      "type": "article",
+      "primary_location": {
+        "landing_page_url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234",
+        "pdf_url": null,
+        "source": {"id": "https://openalex.org/S4210172589", "display_name": "SSRN Electronic Journal", "type": "repository"}
+      },
+      "open_access": {"is_oa": true, "oa_status": "green", "oa_url": "https://papers.ssrn.com/sol3/Delivery.cfm?abstractid=1234"},
+      "authorships": [
+        {"author_position": "first", "author": {"id": "https://openalex.org/A1", "display_name": "David Robinson"}},
+        {"author_position": "last", "author": {"id": "https://openalex.org/A2", "display_name": "Berk A. Sensoy"}}
+      ],
+      "abstract_inverted_index": {"We": [0], "study": [1], "private": [2], "equity": [3], "cash": [4], "flows.": [5]}
+    },
+    {
+      "id": "https://openalex.org/W2",
+      "doi": null,
+      "title": "Deep Hedging with Transformers",
+      "publication_date": "2026-10-14",
+      "type": "preprint",
+      "primary_location": {
+        "landing_page_url": "https://arxiv.org/abs/2610.00002v2",
+        "pdf_url": "https://arxiv.org/pdf/2610.00002v2",
+        "source": {"id": "https://openalex.org/S4306400194", "display_name": "arXiv (Cornell University)", "type": "repository"}
+      },
+      "open_access": {"is_oa": true, "oa_status": "green", "oa_url": "https://arxiv.org/pdf/2610.00002v2"},
+      "authorships": [
+        {"author_position": "first", "author": {"id": "https://openalex.org/A3", "display_name": "Grace Hopper"}}
+      ],
+      "abstract_inverted_index": null
+    }
+  ]
+}
