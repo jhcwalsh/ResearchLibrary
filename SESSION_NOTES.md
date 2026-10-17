@@ -9,6 +9,7 @@
 - Task 1: `create_paper` / `_build_item_payload` accept `repository` and `archive_id` and build a valid
   preprint payload (no journal fields). Tests in `tests/test_zotero_write.py`.
 
+- Task 2: `discovery/store.py` holds follow settings (all topics minus `unfollowed`), digests, the ledger (pending/kept/dismissed/expired), the pending inbox and 14-day expiry. `tests/test_discovery_store.py`.
 **Why**
 - James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
   Claude Desktop, with kept papers folded into Zotero and the cached index.
