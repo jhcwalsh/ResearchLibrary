@@ -1,26 +1,36 @@
 # Session notes
 
-## 2026-10-16 (later still) — Daily paper discovery (in progress)
+## 2026-10-16 (later still) — Daily paper discovery
 
 **Done**
-- Design and plan for daily paper discovery: `docs/superpowers/specs/2026-10-16-daily-paper-discovery-design.md`
-  and `docs/superpowers/plans/2026-10-16-daily-paper-discovery.md`. Probes showed OpenAlex has no recent SSRN
-  papers, SSRN's own listing feed (binding 203) does but without abstracts, and arXiv q-fin runs ~10 a day.
-- Task 1: `create_paper` / `_build_item_payload` accept `repository` and `archive_id` and build a valid
-  preprint payload (no journal fields). Tests in `tests/test_zotero_write.py`.
+- New `research_library.discovery` package (store, sources, scoring, summaries, run, keep, cards, handlers),
+  `research-admin discover`, six MCP tools (get_new_papers, keep_new_papers, dismiss_new_papers, consider_paper,
+  get/set_followed_topics), preprint support in `zotero_client`, and the repo's first `README.md`. Design and
+  plan under `docs/superpowers/`. 173 tests pass.
+- Sources: arXiv (q-fin firehose plus one keyword query per topic, HTTPS with a retry), SSRN's listing feed
+  (binding 203, titles only: no source carries SSRN abstracts within days of posting), OpenAlex (abstracts,
+  mostly journals). OpenAlex has almost no recent SSRN papers and SSRN alert emails do not reach the connected
+  Gmail, so those routes were dropped.
+- Scoring: per-topic fit, floors calibrated on a 3-day window. With-abstract candidates that belonged scored
+  0.49-0.61 (floor 0.50); title-only ones score higher across the board and the relevant ones sat at 0.78-0.83
+  (floor 0.76). Within a topic candidates rank by margin over their own floor so SSRN titles do not crowd out arXiv.
+- First real run: 297 fetched, 292 new, 15 shown across 10 topics. The inbox renders through `get_new_papers`
+  and the cards read well. Scheduled task "ResearchLibrary Discover" runs daily at 06:30 and catches up after sleep.
 
-- Task 2: `discovery/store.py` holds follow settings (all topics minus `unfollowed`), digests, the ledger (pending/kept/dismissed/expired), the pending inbox and 14-day expiry. `tests/test_discovery_store.py`.
-- Task 3: `discovery/sources.py` parses arXiv Atom, the SSRN listing feed and OpenAlex works into one candidate shape; fixtures under `tests/fixtures/`.
-- Task 4: fetchers for arXiv (q-fin firehose plus one keyword query per topic), SSRN (paged newest-first to the window edge) and OpenAlex, behind one `_http_get` seam; `merge_candidates` and `drop_owned`.
-- Task 5: `discovery/scoring.py` embeds candidates with voyage-finance-2, assigns each to the followed topic with the best per-topic fit (mean of its 3 nearest papers in that topic), and picks a shortlist with floors, a per-topic cap and round-robin filling.
-- Task 6: `discovery/summaries.py`: Haiku writes 4-6 search phrases per topic (cached by topic fingerprint) and, per shortlisted candidate, a summary, why it fits, and a keep/maybe/skip call.
-- Task 7: `discovery/run.py` is the daily job: window from the last run (1-7 days), fetch all sources (a dead source is logged, not fatal), dedupe, score, shortlist, summarise (a failed summary leaves an honest card), write the digest, mark pending, expire after 14 days.
-- Task 8: `discovery/keep.py`: keep files the paper in Zotero as a preprint (arXiv/SSRN) or article, tries for a PDF, appends it to the cached index and embeddings, marks the ledger; dismiss; consider a sent link (arXiv, DOI via OpenAlex then Crossref, SSRN feed, or page meta tags).
-- Task 9: six MCP tools in `tools.py` dispatching to `discovery/handlers.py`: get_new_papers (inbox or a dated digest), keep_new_papers, dismiss_new_papers, consider_paper, get/set_followed_topics; plain-text cards in `discovery/cards.py`.
-- Task 10: `research-admin discover [--days N] [--force-queries] [--dry-run]`; `requests` and `beautifulsoup4` promoted to core dependencies (no reinstall needed, both already in the venv); first `README.md` with setup, the admin commands and the scheduled-task command; `.env.example` notes the OpenAlex use of `UNPAYWALL_EMAIL`.
 **Why**
-- James wants the library to feed itself: a daily digest of new arXiv and SSRN papers he approves from
-  Claude Desktop, with kept papers folded into Zotero and the cached index.
+- James wants the library to feed itself: a daily digest he approves from Claude Desktop, with kept papers
+  folded into Zotero and the cached index without a paid rebuild.
+
+**Broken / unsure**
+- Floors come from one 3-day sample; watch the first week. SSRN cards have no abstract, so Haiku can only say
+  why the title fits. arXiv keyword queries find little in a 1-day window; the q-fin firehose carries the load.
+- `consider_paper` on a generic URL depends on publisher citation meta tags. Keeping a paper changes its topic
+  fingerprint, so the Contents page shows the "summary predates" caption until `research-admin contents` runs.
+- Not yet tried end to end: keeping a paper from Claude Desktop against the live Zotero library.
+
+**Next**
+- Tomorrow in Claude Desktop: "what's new", keep one, check it in Zotero and in semantic search.
+- The second project: the cross-paper linkage map and topic summaries over MCP.
 
 ## 2026-10-16 (later) — Contents page with cited topic summaries
 

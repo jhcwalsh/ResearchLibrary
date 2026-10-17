@@ -57,3 +57,14 @@ def test_select_applies_floors_per_topic_cap_and_round_robin():
         {"id": "f", "topic": None, "fit": 0.99, "abstract": "x"},
     ]
     assert [c["id"] for c in scoring.select_candidates(cands, follow)] == ["a", "d", "b"]
+
+
+def test_select_ranks_within_a_topic_by_margin_over_each_floor():
+    # Title-only vectors score higher across the board, so raw fit would always put SSRN first.
+    follow = {"min_fit": 0.50, "min_fit_title_only": 0.76, "per_topic": 2, "max_total": 5}
+    cands = [
+        {"id": "ssrn", "topic": "PE", "fit": 0.80, "abstract": ""},     # margin 0.04
+        {"id": "arxiv", "topic": "PE", "fit": 0.60, "abstract": "x"},   # margin 0.10
+        {"id": "low", "topic": "PE", "fit": 0.77, "abstract": ""},      # margin 0.01, cut by per_topic
+    ]
+    assert [c["id"] for c in scoring.select_candidates(cands, follow)] == ["arxiv", "ssrn"]

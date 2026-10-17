@@ -23,8 +23,11 @@ DEFAULTS = {
     "unfollowed": [],
     "queries": {},
     "ssrn_bindings": [203],
-    "min_fit": 0.62,
-    "min_fit_title_only": 0.55,
+    # Calibrated on a 3-day window, 16 Oct 2026: papers with abstracts that belonged scored
+    # 0.49-0.61 against the library; title-only SSRN papers score higher across the board and
+    # the relevant ones sat at 0.78-0.83. See SESSION_NOTES.md.
+    "min_fit": 0.50,
+    "min_fit_title_only": 0.76,
     "per_topic": 3,
     "max_total": 15,
     "last_run": None,

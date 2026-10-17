@@ -44,6 +44,8 @@ def _setup_logging() -> logging.Logger:
         ],
         force=True,
     )
+    # The Anthropic SDK logs every request at INFO through httpx; that is noise here.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     return logging.getLogger("research-admin")
 
 

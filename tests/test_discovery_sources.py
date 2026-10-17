@@ -67,7 +67,7 @@ def _fake_http(monkeypatch, routes):
 
 
 def test_fetch_arxiv_builds_firehose_and_topic_queries(monkeypatch):
-    calls = _fake_http(monkeypatch, {"http://export.arxiv.org/api/query": (FIX / "arxiv_sample.xml").read_text(encoding="utf-8")})
+    calls = _fake_http(monkeypatch, {"https://export.arxiv.org/api/query": (FIX / "arxiv_sample.xml").read_text(encoding="utf-8")})
     out = sources.fetch_arxiv(datetime(2026, 10, 14, 6, 30), datetime(2026, 10, 16, 6, 30),
                               {"PE": ["private equity", "buyout returns"]}, pause=0, sleep=lambda s: None)
     assert len(calls) == 2
@@ -105,3 +105,20 @@ def test_merge_and_drop_owned():
     out = sources.drop_owned(merged, index, ledger={})
     assert [m["doi"] for m in out] == ["10.1/x"]
     assert sources.drop_owned(out, {"categories": {}}, ledger={out[0]["id"]: {"status": "dismissed"}}) == []
+
+
+def test_fetch_arxiv_retries_once_after_a_failed_request(monkeypatch):
+    attempts = []
+    body = (FIX / "arxiv_sample.xml").read_text(encoding="utf-8").encode("utf-8")
+
+    def flaky(url, headers=None, timeout=30):
+        attempts.append(url)
+        if len(attempts) == 1:
+            raise TimeoutError("read timed out")
+        return body
+
+    monkeypatch.setattr(sources, "_http_get", flaky)
+    waits = []
+    out = sources.fetch_arxiv(datetime(2026, 10, 14), datetime(2026, 10, 16), {}, pause=3, sleep=waits.append)
+    assert len(out) == 2 and len(attempts) == 2 and attempts[0].startswith("https://")
+    assert waits and waits[0] >= 3

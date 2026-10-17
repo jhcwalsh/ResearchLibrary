@@ -142,7 +142,9 @@ def parse_openalex_work(work: dict) -> dict:
 
 # SSRN's feed answers browser-like agents; a bare library string risks a 403.
 USER_AGENT = "Mozilla/5.0 (compatible; research-library/0.1; +https://github.com/jhcwalsh)"
-ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_API = "https://export.arxiv.org/api/query"
+ARXIV_TIMEOUT = 60
+ARXIV_ATTEMPTS = 3
 ARXIV_FIREHOSE = "cat:q-fin.*"
 ARXIV_KEYWORD_CATS = "(cat:q-fin.* OR cat:econ.* OR cat:stat.ML OR cat:cs.LG)"
 SSRN_URL = "https://api.ssrn.com/content/v1/bindings/{binding}/papers?index={index}&count={count}&sort=0"
@@ -169,6 +171,18 @@ def arxiv_query_url(search_query: str, start: int, max_results: int) -> str:
     return ARXIV_API + "?" + urlencode(params, safe=':*[]()')
 
 
+def _arxiv_get(url: str, pause: float, sleep) -> list[dict]:
+    """arXiv stalls or rate-limits now and then; wait and try again before giving up."""
+    for attempt in range(ARXIV_ATTEMPTS):
+        try:
+            return parse_arxiv_atom(_http_get(url, timeout=ARXIV_TIMEOUT).decode("utf-8"))
+        except Exception:
+            if attempt == ARXIV_ATTEMPTS - 1:
+                raise
+            sleep(max(pause, 1.0) * 2 * (attempt + 1))
+    return []
+
+
 def fetch_arxiv(window_from: datetime, window_to: datetime, topic_queries: dict[str, list[str]],
                 pause: float = 3.0, sleep=time.sleep) -> list[dict]:
     """Everything in q-fin for the window, plus one keyword search per topic in the wider categories."""
@@ -176,7 +190,7 @@ def fetch_arxiv(window_from: datetime, window_to: datetime, topic_queries: dict[
     out: list[dict] = []
     start, page_size = 0, 200
     while True:
-        page = parse_arxiv_atom(_http_get(arxiv_query_url(f"{ARXIV_FIREHOSE} AND {date_clause}", start, page_size)).decode("utf-8"))
+        page = _arxiv_get(arxiv_query_url(f"{ARXIV_FIREHOSE} AND {date_clause}", start, page_size), pause, sleep)
         out.extend(page)
         if len(page) < page_size:
             break
@@ -188,7 +202,7 @@ def fetch_arxiv(window_from: datetime, window_to: datetime, topic_queries: dict[
             continue
         sleep(pause)
         query = f"{ARXIV_KEYWORD_CATS} AND ({phrases}) AND {date_clause}"
-        out.extend(parse_arxiv_atom(_http_get(arxiv_query_url(query, 0, 100)).decode("utf-8")))
+        out.extend(_arxiv_get(arxiv_query_url(query, 0, 100), pause, sleep))
     return out
 
 
@@ -306,7 +320,7 @@ _META_RE_REV = re.compile(r'<meta\s+[^>]*?content=["\']([^"\']*)["\'][^>]*?(?:na
 
 def _lookup_arxiv(arxiv_id: str) -> dict:
     url = ARXIV_API + "?" + urlencode({"id_list": arxiv_id, "max_results": 1})
-    cands = parse_arxiv_atom(_http_get(url).decode("utf-8"))
+    cands = _arxiv_get(url, pause=3.0, sleep=time.sleep)
     for c in cands:
         if c["arxiv_id"] == arxiv_id:
             return c

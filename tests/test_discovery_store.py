@@ -22,7 +22,7 @@ def test_candidate_id_prefers_doi_then_arxiv_then_ssrn_then_title():
 
 def test_follow_defaults_and_roundtrip(tmp_path):
     f = store.load_follow(tmp_path)
-    assert f["ssrn_bindings"] == [203] and f["min_fit"] == 0.62 and f["per_topic"] == 3 and f["max_total"] == 15
+    assert f["ssrn_bindings"] == [203] and f["min_fit"] == 0.50 and f["min_fit_title_only"] == 0.76 and f["per_topic"] == 3 and f["max_total"] == 15
     f["unfollowed"] = ["ESG"]
     store.save_follow(f, tmp_path)
     assert store.load_follow(tmp_path)["unfollowed"] == ["ESG"]
