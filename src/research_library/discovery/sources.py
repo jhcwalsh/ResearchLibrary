@@ -5,7 +5,9 @@ Every source is parsed into the same candidate dict:
     abstract, doi, url, pdf_url, arxiv_id, ssrn_id, venue, extra
 with "" for missing text fields. `id` is set later by merge_candidates.
 """
+import html as _html
 import json
+import os
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -290,3 +292,127 @@ def drop_owned(cands: list[dict], index: dict, ledger: dict) -> list[dict]:
             continue
         out.append(c)
     return out
+
+
+# ── Looking up one reference (consider_paper) ─────────────────────────────────
+
+CROSSREF_WORKS = "https://api.crossref.org/works/"
+_DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>]+)", re.IGNORECASE)
+_ARXIV_BARE_RE = re.compile(r"^(?:arxiv:)?(\d{4}\.\d{4,5})(?:v\d+)?$", re.IGNORECASE)
+_SSRN_RE = re.compile(r"(?:ssrn\.com/.*?abstract(?:_id)?=(\d+))|(?:^ssrn:(\d+)$)", re.IGNORECASE)
+_META_RE = re.compile(r'<meta\s+[^>]*?(?:name|property)=["\']([^"\']+)["\'][^>]*?content=["\']([^"\']*)["\']', re.IGNORECASE)
+_META_RE_REV = re.compile(r'<meta\s+[^>]*?content=["\']([^"\']*)["\'][^>]*?(?:name|property)=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+def _lookup_arxiv(arxiv_id: str) -> dict:
+    url = ARXIV_API + "?" + urlencode({"id_list": arxiv_id, "max_results": 1})
+    cands = parse_arxiv_atom(_http_get(url).decode("utf-8"))
+    for c in cands:
+        if c["arxiv_id"] == arxiv_id:
+            return c
+    if cands:
+        return cands[0]
+    raise LookupError(f"arXiv has no paper with id {arxiv_id}.")
+
+
+def _parse_crossref(message: dict) -> dict:
+    c = _blank_candidate("crossref")
+    c["doi"] = _normalize_doi(message.get("DOI") or "")
+    c["title"] = _clean((message.get("title") or [""])[0])
+    c["authors"] = [f"{_clean(a.get('family'))}, {_clean(a.get('given'))}".strip(", ")
+                    for a in message.get("author") or [] if a.get("family") or a.get("given")]
+    c["abstract"] = _clean(re.sub(r"<[^>]+>", " ", message.get("abstract") or ""))
+    parts = ((message.get("issued") or {}).get("date-parts") or [[]])[0]
+    if parts:
+        c["year"] = str(parts[0])
+        c["published"] = "-".join(f"{p:02d}" if i else str(p) for i, p in enumerate(parts))
+    c["url"] = message.get("URL") or (f"https://doi.org/{c['doi']}" if c["doi"] else "")
+    c["venue"] = _clean((message.get("container-title") or [""])[0])
+    return c
+
+
+def _lookup_doi(doi: str) -> dict:
+    mailto = os.environ.get("UNPAYWALL_EMAIL", "")
+    try:
+        url = f"{OPENALEX_WORKS}/https://doi.org/{doi}" + (f"?{urlencode({'mailto': mailto})}" if mailto else "")
+        return parse_openalex_work(json.loads(_http_get(url)))
+    except Exception:
+        pass
+    try:
+        data = json.loads(_http_get(CROSSREF_WORKS + doi))
+        return _parse_crossref(data["message"])
+    except Exception as exc:
+        raise LookupError(f"Neither OpenAlex nor Crossref knows DOI {doi} ({exc}).") from exc
+
+
+def _lookup_ssrn(ssrn_id: str, bindings: list[int], max_pages: int = 3) -> dict:
+    for binding in bindings:
+        for page_no in range(max_pages):
+            data = json.loads(_http_get(SSRN_URL.format(binding=binding, index=page_no * 200, count=200)))
+            for c in parse_ssrn_page(data):
+                if c["ssrn_id"] == ssrn_id:
+                    return c
+            if len(data.get("papers") or []) < 200:
+                break
+    raise LookupError(f"SSRN paper {ssrn_id} is not in the recent feed; paste its title or DOI instead.")
+
+
+def _page_meta(html_text: str) -> dict[str, list[str]]:
+    meta: dict[str, list[str]] = {}
+    for name, content in _META_RE.findall(html_text) + [(n, c) for c, n in _META_RE_REV.findall(html_text)]:
+        meta.setdefault(name.lower(), []).append(_html.unescape(content))
+    return meta
+
+
+def _lookup_page(url: str) -> dict:
+    meta = _page_meta(_http_get(url).decode("utf-8", "replace"))
+    first = lambda *names: next((meta[n][0] for n in names if meta.get(n)), "")  # noqa: E731
+    doi = _normalize_doi(first("citation_doi", "dc.identifier"))
+    cand = None
+    if doi and _DOI_RE.match(doi):
+        try:
+            cand = _lookup_doi(doi)
+        except LookupError:
+            cand = None
+    if cand is None:
+        cand = _blank_candidate("page")
+    cand["title"] = cand["title"] or _clean(first("citation_title", "dc.title", "og:title"))
+    if not cand["title"]:
+        raise LookupError("That page carries no citation metadata; paste the paper's DOI or title instead.")
+    cand["authors"] = cand["authors"] or [last_first(a) for a in meta.get("citation_author", [])]
+    cand["abstract"] = cand["abstract"] or _clean(first("citation_abstract", "dc.description", "description", "og:description"))
+    cand["doi"] = cand["doi"] or doi
+    cand["url"] = cand["url"] or url
+    cand["pdf_url"] = cand["pdf_url"] or first("citation_pdf_url")
+    published = first("citation_publication_date", "citation_date", "citation_online_date").replace("/", "-")
+    cand["published"] = cand["published"] or published[:10]
+    cand["year"] = cand["year"] or published[:4]
+    cand["venue"] = cand["venue"] or _clean(first("citation_journal_title", "citation_publisher", "og:site_name"))
+    return cand
+
+
+def lookup_reference(reference: str, bindings: list[int]) -> dict:
+    """A candidate for an arXiv id/URL, DOI, SSRN URL or a paper's web page. Raises LookupError."""
+    ref = (reference or "").strip()
+    if not ref:
+        raise LookupError("Give me a DOI, an arXiv id or URL, an SSRN URL, or the paper's web page.")
+    arxiv_id = arxiv_id_from_url(ref)
+    bare = _ARXIV_BARE_RE.match(ref)
+    if bare:
+        arxiv_id = bare.group(1)
+    if arxiv_id:
+        cand = _lookup_arxiv(arxiv_id)
+    else:
+        ssrn = _SSRN_RE.search(ref)
+        doi = _DOI_RE.search(ref)
+        if ssrn:
+            cand = _lookup_ssrn(ssrn.group(1) or ssrn.group(2), bindings)
+        elif doi:
+            cand = _lookup_doi(doi.group(1).rstrip(".,;)"))
+        elif ref.lower().startswith("http"):
+            cand = _lookup_page(ref)
+        else:
+            raise LookupError("I need a DOI, an arXiv id or URL, an SSRN URL, or a paper's web page URL.")
+    cand["source"] = "sent"
+    cand["extra"] = {**(cand.get("extra") or {}), "reference": reference}
+    return cand
