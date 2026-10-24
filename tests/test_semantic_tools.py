@@ -224,3 +224,48 @@ class TestAskLibrary:
                    side_effect=FileNotFoundError("no embeddings.npz")):
             result = await handle_tool("ask_library", {"question": "anything"})
         assert "no embeddings.npz" in result[0].text
+
+
+# ── get_nearest_papers ────────────────────────────────────────────────────────
+
+@pytest.fixture
+def fake_embeddings():
+    import numpy as np
+    vectors = np.array([[1, 0, 0], [0.9, 0.1, 0], [0, 1, 0]], dtype=np.float32)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    return {"keys": ["K1", "K2", "K3"], "vectors": vectors,
+            "paper_cats": ["Regime Switching", "Regime Switching", "Risk Premia"],
+            "cat_names": [], "cat_vectors": np.zeros((0, 3))}
+
+
+@pytest.mark.asyncio
+class TestGetNearestPapers:
+    async def test_ranks_neighbours_with_topic_and_link(self, fake_index_file, fake_embeddings):
+        from research_library.tools import handle_tool
+        with patch("research_library.embeddings.load_embeddings", return_value=fake_embeddings):
+            result = await handle_tool("get_nearest_papers", {"key": "K1", "limit": 5})
+        data = json.loads(result[0].text)
+        assert data["paper"] == {"key": "K1", "title": "HMM paper", "link": "https://doi.org/10.1/a"}
+        assert [n["key"] for n in data["nearest"]] == ["K2", "K3"]
+        assert data["nearest"][0]["score"] > data["nearest"][1]["score"]
+        assert data["nearest"][0]["topic"] == "Regime Switching"
+        assert data["nearest"][0]["link"] == "https://doi.org/10.1/b"
+        assert "not citation" in data["note"]
+
+    async def test_limit_is_respected(self, fake_index_file, fake_embeddings):
+        from research_library.tools import handle_tool
+        with patch("research_library.embeddings.load_embeddings", return_value=fake_embeddings):
+            result = await handle_tool("get_nearest_papers", {"key": "K1", "limit": 1})
+        assert len(json.loads(result[0].text)["nearest"]) == 1
+
+    async def test_unknown_key(self, fake_index_file, fake_embeddings):
+        from research_library.tools import handle_tool
+        with patch("research_library.embeddings.load_embeddings", return_value=fake_embeddings):
+            result = await handle_tool("get_nearest_papers", {"key": "NOPE"})
+        assert "not in the cached index" in result[0].text
+
+    async def test_missing_embeddings(self, fake_index_file):
+        from research_library.tools import handle_tool
+        with patch("research_library.embeddings.load_embeddings", return_value=None):
+            result = await handle_tool("get_nearest_papers", {"key": "K1"})
+        assert "research-admin embed" in result[0].text

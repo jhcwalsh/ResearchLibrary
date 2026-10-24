@@ -328,6 +328,24 @@ TOOLS: list[types.Tool] = [
             "required": ["name"],
         },
     ),
+    types.Tool(
+        name="get_nearest_papers",
+        description=(
+            "The papers most similar in content to one paper the library already holds, best first, "
+            "with a 0-1 similarity score and each paper's topic area. Uses the cached embeddings, so no "
+            "network call. Good for 'what else do I have like this?' and for walking the library from a "
+            "paper the user names. Takes a Zotero item key (from search_papers, semantic_search or "
+            "get_category_papers)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Zotero item key of the starting paper"},
+                "limit": {"type": "integer", "default": 10, "description": "How many neighbours to return (max 50)"},
+            },
+            "required": ["key"],
+        },
+    ),
     # ── Daily paper discovery ───────────────────────────────────────────────
     types.Tool(
         name="get_new_papers",
@@ -538,6 +556,9 @@ async def handle_tool(name: str, arguments: dict) -> list[types.TextContent]:
     if name == "ask_library":
         return await _handle_ask_library(arguments)
 
+    if name == "get_nearest_papers":
+        return _handle_get_nearest_papers(arguments)
+
     # ── Write tool dispatch ──────────────────────────────────────────────
     if name == "add_paper":
         result = zc.create_paper(**arguments)
@@ -648,6 +669,41 @@ def _handle_get_category_papers(arguments: dict) -> list[types.TextContent]:
 
     papers = papers[: arguments.get("limit", 50)]
     return _text(json.dumps(papers, indent=2))
+
+
+def _handle_get_nearest_papers(arguments: dict) -> list[types.TextContent]:
+    from . import embeddings
+    from .linkmap import nearest_papers
+    from .links import paper_link
+
+    index = _load_cached_index()
+    if not index:
+        return _text("No library index cached. Run `research-admin refresh` first.")
+    emb = embeddings.load_embeddings()
+    if emb is None:
+        return _text(f"No embeddings cache at {embeddings.EMBEDDINGS_PATH}. Run `research-admin embed`.")
+
+    key = arguments["key"]
+    limit = max(1, min(int(arguments.get("limit", 10)), 50))
+    start = _hydrate_paper(key, index) if any(
+        p.get("key") == key for c in index["categories"].values() for p in c.get("papers", [])) else None
+    if start is None:
+        return _text(f"Paper '{key}' is not in the cached index. It may be new: run `research-admin all`, "
+                     "or find it with search_papers to check the key.")
+
+    near = nearest_papers(key, index, emb, n=limit)
+    out = {
+        "paper": {"key": key, "title": start.get("title"), "link": paper_link(start)},
+        "note": "Similarity is cosine distance between title+abstract embeddings, not citation.",
+        "nearest": [
+            {"key": n["key"], "score": n["score"], "topic": n["topic"],
+             "title": n["paper"].get("title"), "authors": n["paper"].get("authors", []),
+             "year": n["paper"].get("year", ""), "doi": n["paper"].get("doi", ""),
+             "link": paper_link(n["paper"])}
+            for n in near
+        ],
+    }
+    return _text(json.dumps(out, indent=2))
 
 
 async def _handle_ask_library(arguments: dict) -> list[types.TextContent]:

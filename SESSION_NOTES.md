@@ -18,6 +18,10 @@
   light and dark colours via `prefers-color-scheme`). Spec in `docs/superpowers/specs/`.
 - `tests/test_linkmap.py` (5 tests). 175 offline tests pass. Checked in Chrome on the dark theme:
   map, hover, highlight and the nearest-papers list.
+- 24 Oct: new MCP tool `get_nearest_papers` (key, limit) in `tools.py` wraps `linkmap.nearest_papers`:
+  the starting paper, then neighbours best first with score, topic, authors, year and link, plus a note
+  that similarity is content not citation. 4 tests in `test_semantic_tools.py`; 179 pass. Claude Desktop
+  sees it after a restart. README mentions the map, the launcher and the tool.
 
 **Why**
 - "A graphical interface that links the research papers": the session notes already named the
@@ -32,7 +36,7 @@
 - The faded-neighbour opacity on hover (0.15) is a guess; may want to be lighter on the dark theme.
 
 **Next**
-- Expose `nearest_papers` and the topic summaries over MCP so Claude Desktop can use them.
+- Expose the topic summaries over MCP too, and try `get_nearest_papers` from Claude Desktop.
 - Possibly a 2D layout from the embeddings themselves (UMAP) instead of a force layout, if the
   clusters are worth reading spatially.
 

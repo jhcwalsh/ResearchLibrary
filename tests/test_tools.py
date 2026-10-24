@@ -17,6 +17,7 @@ class TestToolRegistry:
         "get_recent_papers", "get_annotations", "get_tags", "get_papers_by_tag",
         "get_fulltext", "get_fulltext_batch",
         "semantic_search", "list_categories", "get_category_papers", "ask_library",
+        "get_nearest_papers",
         "add_paper", "add_papers_batch", "add_to_collection", "remove_from_collection",
         "add_tag", "remove_tag", "update_paper", "attach_pdf", "create_collection",
         "get_new_papers", "keep_new_papers", "dismiss_new_papers", "consider_paper",

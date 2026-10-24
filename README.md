@@ -3,8 +3,11 @@
 A personal Zotero library of investing and finance papers, served to Claude.
 
 - **MCP server** (`research-library`): Claude Desktop reads, searches and writes the Zotero library,
-  asks questions answered from the papers, and works through the daily discovery inbox.
-- **Streamlit app** (`app.py`): search and ask, browse, and a Contents page with cited topic summaries.
+  asks questions answered from the papers, finds the papers nearest to one it names
+  (`get_nearest_papers`), and works through the daily discovery inbox.
+- **Streamlit app** (`app.py`): search and ask, browse, a Contents page with cited topic summaries,
+  and a Paper Map that draws the library as a graph of similar papers. `Research Library.bat`
+  launches it; copy it to the desktop.
 - **Admin CLI** (`research-admin`): builds and refreshes the cached index, embeddings and summaries,
   fetches PDFs, and runs daily paper discovery.
 
