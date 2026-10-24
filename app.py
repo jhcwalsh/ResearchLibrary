@@ -19,6 +19,11 @@ from src.research_library.contents import (
     load_topic_summaries, render_citations, short_cite, topic_fingerprint,
 )
 from src.research_library.links import _extract_year, paper_link
+from src.research_library.embeddings import load_embeddings
+from src.research_library.linkmap import (
+    DEFAULT_MIN_SIMILARITY, DEFAULT_NEIGHBOURS, build_link_graph, nearest_papers,
+)
+from src.research_library.mapview import render_map_html
 
 def load_subcategories(cached_index: dict) -> dict:
     """Extract {category: {subcategory: [keys]}} from the cached index."""
@@ -30,8 +35,8 @@ def load_subcategories(cached_index: dict) -> dict:
 st.set_page_config(page_title="Research Library", page_icon="📚", layout="wide")
 st.title("📚 Research Library")
 
-mode = st.sidebar.radio("Mode", ["Contents", "Search & Ask", "Browse Collections", "Browse Tags",
-                                 "Recent Papers", "Library Index"])
+mode = st.sidebar.radio("Mode", ["Contents", "Paper Map", "Search & Ask", "Browse Collections",
+                                 "Browse Tags", "Recent Papers", "Library Index"])
 
 
 def format_paper(p):
@@ -245,6 +250,50 @@ if mode == "Contents":
         with body_col:
             if topic:
                 render_topic(topic, categories[topic], summaries.get(topic), all_papers)
+
+
+# ── Paper Map ─────────────────────────────────────────────────────────────────
+elif mode == "Paper Map":
+    cached = load_cached_index()
+    emb = load_embeddings()
+    if not cached or not emb:
+        st.info("The map needs the library index and embeddings. "
+                "Run `research-admin refresh` then `research-admin embed`.")
+    else:
+        categories = cached["categories"]
+        topics = sorted(categories, key=lambda c: -len(categories[c]["papers"]))
+        all_papers = {p["key"]: p for c in categories.values() for p in c["papers"]}
+
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
+        scope = c1.selectbox("Scope", ["Whole library"] + topics,
+                             format_func=lambda t: t if t == "Whole library"
+                             else f"{t} ({len(categories[t]['papers'])})")
+        neighbours = c2.slider("Links per paper", 1, 8, DEFAULT_NEIGHBOURS)
+        floor = c3.slider("Similarity floor", 0.30, 0.90, DEFAULT_MIN_SIMILARITY, 0.01)
+        highlight = c4.text_input("Highlight papers matching", placeholder="title or author")
+
+        graph = build_link_graph(cached, emb, topic=None if scope == "Whole library" else scope,
+                                 neighbours=neighbours, min_similarity=floor)
+        s = graph["stats"]
+        st.caption(f"{s['papers']} papers · {s['links']} links · {s['unlinked']} with no link at this floor. "
+                   "A line joins two papers whose title and abstract say similar things "
+                   f"(embedding similarity ≥ {floor:.2f}); these are not citations. "
+                   "Hover a dot for its links, click to open the paper, drag to rearrange, scroll to zoom.")
+        if graph["nodes"]:
+            st.components.v1.html(render_map_html(graph, highlight, height=720), height=740)
+
+        st.markdown("#### Nearest papers")
+        keys = sorted(all_papers, key=lambda k: all_papers[k]["title"].lower())
+        picked = st.selectbox("Pick a paper", keys, index=None, placeholder="Type to search the library",
+                              format_func=lambda k: f"{re.sub(r'<[^>]+>', '', all_papers[k]['title'])}"
+                                                    f" · {short_cite(all_papers[k])}")
+        if picked:
+            lines = []
+            for near in nearest_papers(picked, cached, emb, n=12):
+                lines.append(f"{paper_line(near['paper'])} · {near['score']:.2f} · *{near['topic']}*")
+            st.markdown(f"Closest to [{re.sub(r'<[^>]+>', '', all_papers[picked]['title'])}]"
+                        f"({paper_link(all_papers[picked])}), best first:")
+            st.markdown("\n".join(lines))
 
 
 elif mode == "Search & Ask":

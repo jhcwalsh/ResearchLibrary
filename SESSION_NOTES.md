@@ -1,5 +1,41 @@
 # Session notes
 
+## 2026-10-23 — Paper Map and a desktop launcher
+
+**Done**
+- `Research Library.bat` in the repo root: copy it to the desktop and double-click. It cds to the
+  repo (absolute path, edit `APP_DIR` if the repo moves), checks the venv exists, and runs
+  `streamlit run app.py` on the default port 8501 with the browser opening. Tested from the real
+  desktop folder (`D:\OneDrive\Desktop`): the app answered HTTP 200.
+- New "Paper Map" page in `app.py`, second in the sidebar. A d3 force-directed graph of the whole
+  library (or one topic): each paper is a dot coloured by topic and sized by its links; a line joins
+  it to its *k* most similar papers above a similarity floor, both from `embeddings.npz`. Hover
+  shows title and citation and lights up the neighbours, click opens the paper (DOI, URL, else
+  Scholar), drag and zoom work, the legend fades topics, and a text box rings papers matching a
+  title or author. Under the map, "Pick a paper" lists its 12 nearest papers with scores and topics.
+- `src/research_library/linkmap.py` (`build_link_graph`, `nearest_papers`: pure functions over the
+  two caches) and `src/research_library/mapview.py` (the HTML/JS template, d3 7.9.0 from cdnjs,
+  light and dark colours via `prefers-color-scheme`). Spec in `docs/superpowers/specs/`.
+- `tests/test_linkmap.py` (5 tests). 175 offline tests pass. Checked in Chrome on the dark theme:
+  map, hover, highlight and the nearest-papers list.
+
+**Why**
+- "A graphical interface that links the research papers": the session notes already named the
+  cross-paper linkage map as the next project, and the embeddings make it free (no model calls).
+  Defaults of 4 links per paper and a 0.55 floor give 2082 links over 733 papers with 30 unlinked,
+  which reads as clusters rather than a hairball; the sliders let James thin or thicken it.
+
+**Broken / unsure**
+- Edges are content similarity, not citations; the caption says so. The map needs internet for
+  the d3 script. The iframe picks light or dark from the OS, not from Streamlit's own theme
+  setting, so a forced Streamlit theme that differs from the OS would mismatch.
+- The faded-neighbour opacity on hover (0.15) is a guess; may want to be lighter on the dark theme.
+
+**Next**
+- Expose `nearest_papers` and the topic summaries over MCP so Claude Desktop can use them.
+- Possibly a 2D layout from the embeddings themselves (UMAP) instead of a force layout, if the
+  clusters are worth reading spatially.
+
 ## 2026-10-16 (later still) — Daily paper discovery
 
 **Done**
